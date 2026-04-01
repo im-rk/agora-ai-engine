@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Boolean
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
 import uuid
 import enum
 from datetime import datetime, timezone
@@ -46,3 +47,19 @@ class CasePrep(Base):
     user = relationship("User", back_populates="case_preps")
     motion = relationship("Motion", back_populates="case_preps")
     debate_sessions = relationship("DebateSession", back_populates="case_prep")
+    embeddings = relationship("ArgumentEmbedding", back_populates="case_prep")
+
+
+class ArgumentEmbedding(Base):
+    __tablename__ = "argument_embeddings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_prep_id = Column(UUID(as_uuid=True), ForeignKey("case_preps.id"), nullable=False)
+    
+    content = Column(String, nullable=False)
+    embedding = Column(Vector(1536), nullable=False)
+    argument_type = Column(String) 
+    
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    case_prep = relationship("CasePrep", back_populates="embeddings")
