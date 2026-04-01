@@ -48,7 +48,7 @@ class CasePrep(Base):
     motion = relationship("Motion", back_populates="case_preps")
     debate_sessions = relationship("DebateSession", back_populates="case_prep")
     embeddings = relationship("ArgumentEmbedding", back_populates="case_prep")
-
+    embeddings = relationship("ArgumentEmbedding", back_populates="case_prep")
 
 class ArgumentEmbedding(Base):
     __tablename__ = "argument_embeddings"
