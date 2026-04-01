@@ -23,3 +23,8 @@ class User(Base):
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    case_preps = relationship("CasePrep", back_populates="user")
+    debate_sessions = relationship("DebateSession", back_populates="user")
+    performances = relationship("UserPerformance", back_populates="user")
