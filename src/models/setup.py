@@ -7,6 +7,13 @@ import enum
 from datetime import datetime, timezone
 from src.core.database import Base
 
+from sqlalchemy import UniqueConstraint
+
+__table_args__ = (
+    UniqueConstraint("user_id", "motion_id", "side", name="unique_case_prep"),
+)
+
+
 class MotionCategory(str, enum.Enum):
     POLITICS = "Politics"
     TECHNOLOGY = "Technology"
@@ -57,7 +64,7 @@ class ArgumentEmbedding(Base):
     case_prep_id = Column(UUID(as_uuid=True), ForeignKey("case_preps.id"), nullable=False)
     
     content = Column(String, nullable=False)
-    embedding = Column(Vector(1536), nullable=False)
+    embedding = Column(Vector(1024), nullable=False)
     argument_type = Column(String) 
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
