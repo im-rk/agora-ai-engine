@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from src.core.config import DATABASE_URL
 from src.core.database import Base
 from src.models.user import User
-from src.models.setup import Motion, CasePrep, ArgumentEmbedding
+from src.models.setup import Motion, CasePrep, ArgumentEmbedding, AICallLog
 from src.models.debate import DebateSession, Turn, POI
 from src.models.results import AdjudicationResult, UserPerformance
 

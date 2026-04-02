@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Boolean
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Boolean, Float, Text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -63,3 +63,21 @@ class ArgumentEmbedding(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     case_prep = relationship("CasePrep", back_populates="embeddings")
+
+class AICallLog(Base):
+    __tablename__ = "ai_call_logs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("debate_sessions.id"), nullable=False)
+    
+    agent_name = Column(String, nullable=False)
+    prompt_used = Column(Text, nullable=False)  
+    model_version = Column(String, nullable=False)
+    temperature = Column(Float, nullable=False)
+    
+    raw_output = Column(Text, nullable=True)  # Should be Text, not DateTime
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    session = relationship("DebateSession", back_populates="ai_logs")
+
+
