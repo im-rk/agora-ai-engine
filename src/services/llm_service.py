@@ -1,4 +1,4 @@
-from src.core.groq_client import client
+from src.ai.llm_client import client
 
 def ask_llm(prompt: str):
     response = client.chat.completions.create(
