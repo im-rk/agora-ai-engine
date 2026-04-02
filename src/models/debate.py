@@ -49,6 +49,7 @@ class DebateSession(Base):
     pois = relationship("POI", back_populates="session")
     results = relationship("AdjudicationResult", back_populates="session", uselist=False)
     performances = relationship("UserPerformance", back_populates="session")
+    ai_logs = relationship("AICallLog", back_populates="session")
 
 class Turn(Base):
     __tablename__ = "turns"

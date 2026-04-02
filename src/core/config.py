@@ -1,12 +1,16 @@
-import os
-from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
 
-load_dotenv()
+class Settings(BaseSettings):
+    DATABASE_URL: str
+    REDIS_URL: str
+    GROQ_API_KEY : str
+    SUPABASE_URL: str
+    SUPABASE_KEY:str
+    LANGFUSE_SECRET_KEY: str
+    LANGFUSE_PUBLIC_KEY: str
+    LANGFUSE_HOST: str
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-COHERE_API_KEY = os.getenv("COHERE_API_KEY")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
