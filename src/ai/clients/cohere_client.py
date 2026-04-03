@@ -1,4 +1,4 @@
 import cohere
-from src.core.config import COHERE_API_KEY
+from src.core.config import settings
 
-co = cohere.Client(COHERE_API_KEY)
+co = cohere.Client(settings.COHERE_API_KEY)

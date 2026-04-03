@@ -1,14 +1,18 @@
 from pydantic_settings import BaseSettings
+from typing import Optional
 
 class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str
-    GROQ_API_KEY : str
-    SUPABASE_URL: str
-    SUPABASE_KEY:str
-    LANGFUSE_SECRET_KEY: str
-    LANGFUSE_PUBLIC_KEY: str
-    LANGFUSE_HOST: str
+    OPENAI_API_KEY: str
+    COHERE_API_KEY: str
+
+    GROQ_API_KEY: Optional[str] = None
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_KEY: Optional[str] = None
+    LANGFUSE_SECRET_KEY: Optional[str] = None
+    LANGFUSE_PUBLIC_KEY: Optional[str] = None
+    LANGFUSE_HOST: Optional[str] = None
 
     class Config:
         env_file = ".env"
