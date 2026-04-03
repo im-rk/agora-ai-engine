@@ -9,10 +9,6 @@ from src.core.database import Base
 
 from sqlalchemy import UniqueConstraint
 
-__table_args__ = (
-    UniqueConstraint("user_id", "motion_id", "side", name="unique_case_prep"),
-)
-
 
 class MotionCategory(str, enum.Enum):
     POLITICS = "Politics"
@@ -36,6 +32,9 @@ class Motion(Base):
 
 class CasePrep(Base):
     __tablename__ = "case_preps"
+    __table_args__ = (
+        UniqueConstraint("user_id", "motion_id", "side", name="unique_case_prep"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

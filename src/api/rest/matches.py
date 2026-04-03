@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from src.core.database import get_db
 
-from src.schemas.setup_schema import MatchStartRequest, MatchStartResponse
+from src.schemas.debate_schema import MatchStartRequest, MatchStartResponse
 from src.services.match_service import start_new_match
 
 router = APIRouter()
