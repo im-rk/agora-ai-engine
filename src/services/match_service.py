@@ -48,3 +48,13 @@ async def start_new_match(db: Session, request: MatchStartRequest):
         db.rollback() 
         print(f"Error starting match: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+def fetch_case_prep(db: Session, prep_id: str):
+    print(f"Service: Fetching case prep {prep_id} for frontend...")
+    
+    prep = debate_repo.get_case_prep_by_id(db=db, prep_id=prep_id)
+    
+    if not prep:
+        raise HTTPException(status_code=404, detail="Case Prep not found in database.")
+        
+    return prep

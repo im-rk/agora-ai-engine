@@ -24,3 +24,7 @@ def create_case_prep(db:Session,user_id:str,side:str)->CasePrep:
     db.add(new_prep)
     db.flush()
     return new_prep
+
+def get_case_prep_by_id(db: Session, prep_id: str):
+    """Fetches a specific case prep container from the database."""
+    return db.query(CasePrep).filter(CasePrep.id == prep_id).first()
