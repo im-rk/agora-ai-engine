@@ -1,0 +1,17 @@
+{
+  "motion_text": "This House would implement a universal basic income",
+  "category": "Economics",
+  "is_custom": false,
+  "expected_arguments": {
+    "government": [
+      "Reduces poverty and inequality",
+      "Provides financial security",
+      "Stimulates economic growth"
+    ],
+    "opposition": [
+      "Too expensive to implement",
+      "Reduces incentive to work",
+      "Inflation risks"
+    ]
+  }
+}
