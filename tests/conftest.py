@@ -1,17 +1,23 @@
 """
 Shared pytest fixtures for the entire test suite.
-This is the most important file - all fixtures defined here are available to all tests.
+This is the ENGINE - it sets up your test database and FastAPI client.
 """
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from fastapi.testclient import TestClient
+
 from src.core.database import Base
+# from main import app  # TODO: Uncomment when main.py has FastAPI app
 
 
 @pytest.fixture(scope="session")
 def engine():
-    """Create a test database engine (in-memory SQLite for speed)."""
-    engine = create_engine("sqlite:///:memory:")
+    """
+    Create a test database engine (SQLite in-memory for speed).
+    This runs ONCE per test session.
+    """
+    engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(engine)
     yield engine
     Base.metadata.drop_all(engine)
@@ -19,12 +25,24 @@ def engine():
 
 @pytest.fixture(scope="function")
 def db_session(engine):
-    """Create a new database session for each test."""
+    """
+    Create a fresh database session for EACH test.
+    Automatically rolls back after each test to keep tests isolated.
+    """
     Session = sessionmaker(bind=engine)
     session = Session()
     yield session
     session.rollback()
     session.close()
+
+
+# @pytest.fixture
+# def client():
+#     """
+#     FastAPI TestClient for integration tests.
+#     TODO: Uncomment when main.py has FastAPI app
+#     """
+#     return TestClient(app)
 
 
 @pytest.fixture
