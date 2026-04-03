@@ -1,33 +1,53 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from src.schemas.setup_schema import MatchStartRequest
+from src.schemas.debate_schema import MatchStartRequest
 from src.ai.agents.prep_coach import generate_case_prep
 from src.repositories import debate_repo
+from src.models.user import SkillLevel
+from src.models.setup import Motion, MotionCategory
+import uuid
 
 async def start_new_match(db: Session, request: MatchStartRequest):
     print(f" Service: Starting new match for '{request.motion_text}'")
     
     try:
-        # 1. Use the Repository to stage the DB inserts
+        # 1. Create or get the motion
+        motion = Motion(
+            id=uuid.uuid4(),
+            motion_text=request.motion_text,
+            category=MotionCategory.CUSTOM,
+            is_custom=True
+        )
+        db.add(motion)
+        db.flush()
+        
+        # 2. Get user's skill level (for now, defaulting to BEGINNER)
+        # TODO: Fetch from user record
+        skill_level = SkillLevel.BEGINNER
+        
+        # 3. Use the Repository to stage the DB inserts
         new_session = debate_repo.create_debate_session(
-            db=db, 
-            user_id=request.user_id, 
-            format_type=request.format, 
-            side=request.side
+            db=db,
+            user_id=request.user_id,
+            motion_id=str(motion.id),
+            format_type=request.format,
+            side=request.side,
+            skill_level=skill_level
         )
         
         new_prep = debate_repo.create_case_prep(
-            db=db, 
-            user_id=request.user_id, 
+            db=db,
+            user_id=request.user_id,
+            motion_id=str(motion.id),
             side=request.side
         )
 
-        # 2. Commit the transaction ONLY ONCE at the Service level
+        # 4. Commit the transaction ONLY ONCE at the Service level
         db.commit() 
         db.refresh(new_session)
         db.refresh(new_prep)
 
-        # 3. Call the AI Agent (The Chef)
+        # 5. Call the AI Agent (The Chef)
         success = await generate_case_prep(
             db=db,
             case_prep_id=str(new_prep.id),
