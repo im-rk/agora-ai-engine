@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from src.models.setup import CasePrep, AICallLog
+from src.models.debate import DebateSession
 
 
 def create_case_prep(db: Session, user_id: str, motion_id: str, side: str) -> CasePrep:
@@ -19,6 +20,14 @@ def create_case_prep(db: Session, user_id: str, motion_id: str, side: str) -> Ca
 def get_case_prep_by_id(db: Session, prep_id: str) -> Optional[CasePrep]:
     """Fetches case prep record by ID."""
     return db.query(CasePrep).filter(CasePrep.id == prep_id).first()
+
+
+def get_case_prep_by_match(db: Session, match_id: str) -> Optional[CasePrep]:
+    """Fetches case prep by match/session ID. Follows parent resource (Match) hierarchy."""
+    session = db.query(DebateSession).filter(DebateSession.id == match_id).first()
+    if not session:
+        return None
+    return session.case_prep
 
 
 def update_case_prep(

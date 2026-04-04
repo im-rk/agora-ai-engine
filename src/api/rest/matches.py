@@ -1,6 +1,9 @@
 # File: src/api/rest/matches.py
+# RESTful API following enterprise design patterns
+# Parent Resource: Match (DebateSession)
+# All endpoints revolve around /api/v1/matches/{match_id}
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 from src.core.database import get_db
 
@@ -11,27 +14,36 @@ from src.repositories import case_prep_repo
 router = APIRouter()
 
 
-@router.post("/start", response_model=MatchStartResponse)
-async def create_match_endpoint(
+@router.post("", response_model=MatchStartResponse)
+async def create_match(
     request: MatchStartRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Endpoint to start a new debate match and generate AI case prep.
+    POST /api/v1/matches
+    Creates a new match and triggers AI case preparation.
+    Returns: match_id (session_id), case_prep_id, and confirmation message.
     """
-
     result = await start_new_match(db=db, request=request)
     return result
 
 
-@router.get("/case-prep/{prep_id}")
-def fetch_case_prep(prep_id: str, db: Session = Depends(get_db)):
+@router.get("/{match_id}/prep")
+def fetch_prep_by_match(
+    match_id: str = Path(..., description="The match/session ID"),
+    db: Session = Depends(get_db)
+):
     """
-    Retrieves a previously generated case preparation.
+    GET /api/v1/matches/{match_id}/prep
+    Retrieves the case preparation for a specific match.
+    Frontend use: Load prep data in the "Case Prep Room" UI.
     """
-    prep = case_prep_repo.get_case_prep_by_id(db=db, prep_id=prep_id)
+    prep = case_prep_repo.get_case_prep_by_match(db=db, match_id=match_id)
 
     if not prep:
-        raise HTTPException(status_code=404, detail="Case Prep not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Case prep not found for this match"
+        )
 
     return prep
