@@ -1,5 +1,3 @@
-# File: src/api/rest/matches.py
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from src.core.database import get_db

@@ -27,11 +27,11 @@ def map_format(format_str: str):
 
 
 def start_new_match(db: Session, request: MatchStartRequest):
-    print(f"🚀 Service: Starting new match for '{request.motion_text}'")
+    print(f" Service: Starting new match for '{request.motion_text}'")
 
     try:
         # ----------------------------
-        # 1️⃣ Validate User
+        # 1️ Validate User
         # ----------------------------
         user = db.query(User).filter(User.id == request.user_id).first()
 
@@ -41,7 +41,7 @@ def start_new_match(db: Session, request: MatchStartRequest):
         skill_level = user.skill_level
 
         # ----------------------------
-        # 2️⃣ Create Motion
+        # 2️ Create Motion
         # ----------------------------
         motion = Motion(
             id=uuid.uuid4(),
@@ -53,24 +53,24 @@ def start_new_match(db: Session, request: MatchStartRequest):
         db.add(motion)
         db.flush()
 
-        # 🔥 DEBUG (important)
+        #  DEBUG (important)
         print("FORMAT BEFORE:", request.format)
         print("FORMAT AFTER:", map_format(request.format))
 
         # ----------------------------
-        # 3️⃣ Create Debate Session
+        # 3️ Create Debate Session
         # ----------------------------
         new_session = debate_repo.create_debate_session(
             db=db,
             user_id=user.id,
             motion_id=str(motion.id),
-            format_type=map_format(request.format),  # ✅ FIXED HERE
+            format_type=map_format(request.format),  #  FIXED HERE
             side=request.side,
             skill_level=skill_level
         )
 
         # ----------------------------
-        # 4️⃣ Create Case Prep
+        # 4️ Create Case Prep
         # ----------------------------
         new_prep = debate_repo.create_case_prep(
             db=db,
@@ -80,14 +80,14 @@ def start_new_match(db: Session, request: MatchStartRequest):
         )
 
         # ----------------------------
-        # 5️⃣ Commit DB Changes
+        # 5️ Commit DB Changes
         # ----------------------------
         db.commit()
         db.refresh(new_session)
         db.refresh(new_prep)
 
         # ----------------------------
-        # 6️⃣ Run Prep Coach
+        # 6️ Run Prep Coach
         # ----------------------------
         success = generate_case_prep(
             db=db,
@@ -99,10 +99,10 @@ def start_new_match(db: Session, request: MatchStartRequest):
         if not success:
             raise HTTPException(status_code=500, detail="AI Prep failed")
 
-        print("✅ Match + AI Prep completed")
+        print(" Match + AI Prep completed")
 
         # ----------------------------
-        # 7️⃣ Return Response
+        # 7️ Return Response
         # ----------------------------
         return {
             "session_id": str(new_session.id),
@@ -116,7 +116,7 @@ def start_new_match(db: Session, request: MatchStartRequest):
 
     except Exception as e:
         db.rollback()
-        print(f"❌ Error starting match: {e}")
+        print(f" Error starting match: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -124,7 +124,7 @@ def start_new_match(db: Session, request: MatchStartRequest):
 # FETCH CASE PREP
 # --------------------------------------
 def fetch_case_prep(db: Session, prep_id: str):
-    print(f"📦 Service: Fetching case prep {prep_id}")
+    print(f" Service: Fetching case prep {prep_id}")
 
     prep = debate_repo.get_case_prep_by_id(db=db, prep_id=prep_id)
 
