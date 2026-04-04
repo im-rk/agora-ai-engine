@@ -24,7 +24,7 @@ app = FastAPI(
 )
 
 # Include routers
-app.include_router(matches.router, prefix="/matches", tags=["Matches"])
+app.include_router(matches.router, prefix="/api/v1/matches", tags=["Matches"])
 
 
 # Root endpoint (health check)
