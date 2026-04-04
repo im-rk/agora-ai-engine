@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from src.schemas.debate_schema import MatchStartRequest
 from src.services.case_prep_service import prepare_case
 from src.repositories import debate_repo
+from src.repositories import case_prep_repo
 from src.models.user import SkillLevel, User
 from src.models.setup import Motion, MotionCategory
 
