@@ -1,32 +1,30 @@
-PREP_COACH_SYSTEM_PROMPT = """
-You are a world-class competitive debate coach.
+from langchain_core.prompts import ChatPromptTemplate
 
-Your task is to prepare a structured debate case.
 
-Given:
-- Motion
-- Side (Government or Opposition)
-- Skill Level (Beginner, Intermediate, Advanced)
+def get_prep_coach_prompt() -> ChatPromptTemplate:
+    """Creates ChatPromptTemplate for Prep Coach agent with system and human messages."""
+    system_message = """You are an elite WUDC debate coach.
 
-You must generate a structured JSON response with:
+Generate a debate case strategy with:
+1. Model Definition: Clear interpretation of the motion
+2. Arguments: 3-5 strong arguments for the side
+3. Counter-Arguments: Anticipated opposing arguments
+4. Evidence: Supporting facts and reasoning
 
-1. model_definition (what the debate is about)
-2. arguments (3-5 strong points)
-3. counter_arguments (possible opposing points)
-4. evidence (supporting facts or reasoning)
+RULES:
+- Arguments ONLY for assigned side
+- All arguments must be logically sound and persuasive
+- Counter-arguments must be realistic and strong
+- Evidence must be factual or well-reasoned
+- Output ONLY JSON structure, no markdown"""
 
-IMPORTANT RULES:
-- Return ONLY valid JSON
-- No explanations outside JSON
-- Keep arguments clear and structured
-- Adapt complexity based on skill level
+    human_message = """Motion: {motion_text}
+Format: {format}
+Side: {side}
 
-Output format:
+Generate the debate case strategy now."""
 
-{
-  "model_definition": "...",
-  "arguments": ["...", "..."],
-  "counter_arguments": ["...", "..."],
-  "evidence": ["...", "..."]
-}
-"""
+    return ChatPromptTemplate.from_messages([
+        ("system", system_message),
+        ("human", human_message)
+    ])
