@@ -6,7 +6,8 @@ It:
 1. Calls the Prep Coach AI agent
 2. Validates the response
 3. Saves the result to the database via repository
-4. Logs the AI call to AICallLog (Langfuse) for observability
+4. Generates embeddings for semantic search
+5. Logs the AI call to AICallLog (Langfuse) for observability
 """
 
 import json
@@ -15,6 +16,8 @@ from typing import Dict, Any
 
 from src.ai.agents.prep_coach import generate_case_prep
 from src.repositories.case_prep_repo import update_case_prep, save_ai_call_log
+from src.services.embedding_service import get_embedding
+from src.models.setup import ArgumentEmbedding
 
 
 async def prepare_case(
@@ -28,24 +31,9 @@ async def prepare_case(
     format: str
 ) -> Dict[str, Any]:
     """
-    Orchestrates case preparation workflow: agent call, validation, DB save, logging.
-    
-    Args:
-        db: SQLAlchemy session
-        user_id: User UUID
-        motion_id: Motion UUID
-        session_id: Debate session UUID (for AICallLog linking)
-        case_prep_id: Case prep UUID
-        motion_text: Debate motion
-        side: Government or Opposition
-        format: BP or AP
-    
-    Returns:
-        Dict with case preparation data
-    
-    Raises:
-        ValueError: If AI response validation fails
+    Orchestrates case preparation workflow: agent call, validation, DB save, embeddings, logging.
     """
+
     prompt_payload = {
         "motion_text": motion_text,
         "side": side,
@@ -53,12 +41,18 @@ async def prepare_case(
     }
 
     try:
+        # ----------------------------
+        # 1️ CALL AI AGENT
+        # ----------------------------
         ai_response = await generate_case_prep(
             motion_text=motion_text,
             side=side,
             format=format
         )
 
+        # ----------------------------
+        # 2️ VALIDATE RESPONSE
+        # ----------------------------
         if not isinstance(ai_response, dict):
             raise ValueError("AI agent did not return a dictionary")
 
@@ -66,6 +60,10 @@ async def prepare_case(
         if not required_keys.issubset(ai_response.keys()):
             missing = required_keys - set(ai_response.keys())
             raise ValueError(f"AI response missing required keys: {missing}")
+
+        # ----------------------------
+        # 3️ SAVE CASE PREP (JSON)
+        # ----------------------------
         update_case_prep(
             db=db,
             case_prep_id=case_prep_id,
@@ -75,6 +73,52 @@ async def prepare_case(
             evidence=ai_response.get("evidence")
         )
 
+        # ----------------------------
+        # 4️ GENERATE EMBEDDINGS 
+        # ----------------------------
+        all_texts = []
+
+        # Arguments (structured)
+        for arg in ai_response.get("arguments", []):
+            if isinstance(arg, dict):
+                claim = arg.get("claim", "")
+                if claim:
+                    all_texts.append((claim, "argument"))
+
+        # Counter arguments
+        for arg in ai_response.get("counter_arguments", []):
+            if arg:
+                all_texts.append((arg, "counter_argument"))
+
+        # Evidence
+        for ev in ai_response.get("evidence", []):
+            if ev:
+                all_texts.append((ev, "evidence"))
+
+        # Generate + store embeddings
+        for text, arg_type in all_texts:
+            try:
+                embedding = get_embedding(text)
+
+                emb = ArgumentEmbedding(
+                    case_prep_id=case_prep_id,
+                    content=text,
+                    embedding=embedding,
+                    argument_type=arg_type
+                )
+
+                db.add(emb)
+
+            except Exception as emb_error:
+                print(f"⚠️ Embedding failed for text: {text[:50]}... Error: {emb_error}")
+
+        db.commit()
+
+        print("✅ Embeddings stored successfully")
+
+        # ----------------------------
+        # 5️ LOG AI CALL
+        # ----------------------------
         save_ai_call_log(
             db=db,
             session_id=session_id,
@@ -89,4 +133,5 @@ async def prepare_case(
 
     except Exception as e:
         db.rollback()
+        print(f" Error in prepare_case: {e}")
         raise
