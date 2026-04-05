@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
+from pydantic import ConfigDict
 
 class Settings(BaseSettings):
     DATABASE_URL: str
