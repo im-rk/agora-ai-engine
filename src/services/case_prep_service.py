@@ -1,13 +1,12 @@
 """
 Case Prep Service: Orchestrates case preparation workflow.
 
-This service bridges the gap between the FastAPI layer and the AI agent.
-It:
-1. Calls the Prep Coach AI agent
-2. Validates the response
-3. Saves the result to the database via repository
-4. Generates embeddings for semantic search
-5. Logs the AI call to AICallLog (Langfuse) for observability
+Responsibilities:
+  1. Call Prep Coach AI agent to generate case preparation
+  2. Validate structured response
+  3. Persist case prep data to database
+  4. Generate embeddings for semantic search
+  5. Log AI call for observability (Langfuse)
 """
 
 import json
@@ -31,7 +30,23 @@ async def prepare_case(
     format: str
 ) -> Dict[str, Any]:
     """
-    Orchestrates case preparation workflow: agent call, validation, DB save, embeddings, logging.
+    Orchestrates case preparation workflow.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        motion_id: Motion ID
+        session_id: Debate session ID
+        case_prep_id: Case prep record ID
+        motion_text: The debate motion
+        side: Government or Opposition
+        format: Debate format (BP/AP)
+    
+    Returns:
+        AI-generated case preparation data
+    
+    Raises:
+        ValueError: If AI generation or validation fails
     """
 
     prompt_payload = {
@@ -41,29 +56,23 @@ async def prepare_case(
     }
 
     try:
-        # ----------------------------
-        # 1️ CALL AI AGENT
-        # ----------------------------
+        # Step 1: Call AI agent
         ai_response = await generate_case_prep(
             motion_text=motion_text,
             side=side,
             format=format
         )
 
-        # ----------------------------
-        # 2️ VALIDATE RESPONSE
-        # ----------------------------
+        # Step 2: Validate response structure
         if not isinstance(ai_response, dict):
-            raise ValueError("AI agent did not return a dictionary")
+            raise ValueError("AI agent response must be a dictionary")
 
         required_keys = {"model_definition", "arguments", "counter_arguments", "evidence"}
-        if not required_keys.issubset(ai_response.keys()):
-            missing = required_keys - set(ai_response.keys())
-            raise ValueError(f"AI response missing required keys: {missing}")
+        missing_keys = required_keys - set(ai_response.keys())
+        if missing_keys:
+            raise ValueError(f"AI response missing keys: {missing_keys}")
 
-        # ----------------------------
-        # 3️ SAVE CASE PREP (JSON)
-        # ----------------------------
+        # Step 3: Persist case prep to database
         update_case_prep(
             db=db,
             case_prep_id=case_prep_id,
@@ -73,52 +82,39 @@ async def prepare_case(
             evidence=ai_response.get("evidence")
         )
 
-        # ----------------------------
-        # 4️ GENERATE EMBEDDINGS 
-        # ----------------------------
-        all_texts = []
-
-        # Arguments (structured)
+        # Step 4: Generate embeddings for semantic search
+        embedding_texts = []
+        
         for arg in ai_response.get("arguments", []):
-            if isinstance(arg, dict):
-                claim = arg.get("claim", "")
-                if claim:
-                    all_texts.append((claim, "argument"))
+            if isinstance(arg, dict) and "claim" in arg:
+                embedding_texts.append((arg["claim"], "argument"))
 
-        # Counter arguments
-        for arg in ai_response.get("counter_arguments", []):
-            if arg:
-                all_texts.append((arg, "counter_argument"))
+        for counter_arg in ai_response.get("counter_arguments", []):
+            if counter_arg:
+                embedding_texts.append((counter_arg, "counter_argument"))
 
-        # Evidence
-        for ev in ai_response.get("evidence", []):
-            if ev:
-                all_texts.append((ev, "evidence"))
+        for evidence in ai_response.get("evidence", []):
+            if evidence:
+                embedding_texts.append((evidence, "evidence"))
 
-        # Generate + store embeddings
-        for text, arg_type in all_texts:
+        # Store embeddings
+        for content, arg_type in embedding_texts:
             try:
-                embedding = get_embedding(text)
-
-                emb = ArgumentEmbedding(
+                embedding_vector = get_embedding(content)
+                embedding_record = ArgumentEmbedding(
                     case_prep_id=case_prep_id,
-                    content=text,
-                    embedding=embedding,
+                    content=content,
+                    embedding=embedding_vector,
                     argument_type=arg_type
                 )
-
-                db.add(emb)
-
-            except Exception as emb_error:
-                print(f"⚠️ Embedding failed for text: {text[:50]}... Error: {emb_error}")
+                db.add(embedding_record)
+            except Exception as e:
+                # Log but don't fail on embedding errors
+                print(f"Warning: Embedding generation failed for content: {content[:50]}... ({str(e)})")
 
         db.commit()
 
-        print("✅ Embeddings stored successfully")
-
-        # ----------------------------
-        # 5️ LOG AI CALL
-        # ----------------------------
+        # Step 5: Log AI call for observability
         save_ai_call_log(
             db=db,
             session_id=session_id,
@@ -133,5 +129,4 @@ async def prepare_case(
 
     except Exception as e:
         db.rollback()
-        print(f" Error in prepare_case: {e}")
         raise
