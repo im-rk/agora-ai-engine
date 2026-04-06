@@ -15,6 +15,7 @@ from src.repositories import debate_repo
 from src.repositories import case_prep_repo
 from src.models.user import SkillLevel, User
 from src.models.setup import Motion, MotionCategory
+from src.engine.state import state_manager
 
 
 def map_format(format_str: str) -> str:
@@ -68,6 +69,13 @@ async def start_new_match(db: Session, request: MatchStartRequest) -> dict:
         db.refresh(new_session)
         db.refresh(new_prep)
 
+        await state_manager.initialize_match(
+            match_id=str(new_session.id),
+            human_side=request.side,
+            format_type=request.side,
+            preferred_role=request.preferred_role
+        )
+        
         await prepare_case(
             db=db,
             user_id=str(user.id),
