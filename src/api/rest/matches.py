@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 from src.core.database import get_db
 
-from src.schemas.debate_schema import MatchStartRequest, MatchStartResponse
+from src.schemas.debate_schema import MatchStartRequest, MatchStartResponse, CasePrepResponse
 from src.services.match_service import start_new_match
 from src.repositories import case_prep_repo
 
@@ -28,7 +28,7 @@ async def create_match(
     return result
 
 
-@router.get("/{match_id}/prep")
+@router.get("/{match_id}/prep", response_model=CasePrepResponse)
 def fetch_prep_by_match(
     match_id: str = Path(..., description="The match/session ID"),
     db: Session = Depends(get_db)
@@ -46,4 +46,10 @@ def fetch_prep_by_match(
             detail="Case prep not found for this match"
         )
 
-    return prep
+    return CasePrepResponse(
+        id=str(prep.id),
+        side=prep.side,
+        arguments=prep.arguments or [],
+        counter_arguments=prep.counter_arguments or [],
+        evidence=prep.evidence or []
+    )
