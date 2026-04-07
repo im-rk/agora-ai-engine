@@ -102,7 +102,7 @@ async def start_new_match(db: Session, request: MatchStartRequest) -> dict:
 
     except Exception as e:
         db.rollback()
-        print(f"🔴 ERROR in start_new_match: {str(e)}")
+        print(f"ERROR in start_new_match: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
