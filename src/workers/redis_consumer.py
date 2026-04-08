@@ -1,77 +1,118 @@
 import asyncio
 import json
 import redis.asyncio as redis
+
 from src.core.config import settings
-from src.engine.state import state_manager 
+from src.engine.state import state_manager
+from src.schemas.event_schema import BaseEvent, EventType
+from src.engine.rules import evaluate_rules
+
+from src.ai.agents.debater import generate_ai_speech
+from src.ai.agents.sniper import generate_poi
+from src.ai.agents.adjudicator import adjudicate_match
+
 
 async def start_redis_consumer():
-    """Background worker that listens for game events and triggers the AI."""
+    """Background worker that listens for game events and orchestrates the match."""
+
     redis_url = settings.REDIS_URL
     client = redis.from_url(redis_url, decode_responses=True)
     pubsub = client.pubsub()
 
-    # Listen to ALL match channels using a wildcard (*)
     await pubsub.psubscribe("channel_*")
-    print("🎧 Python AI Worker is actively listening to all matches (channel_*)...")
+    print(" Python AI Worker is actively listening to all matches (channel_*)...")
 
     async for message in pubsub.listen():
-        if message["type"] == "pmessage":
-            channel = message["channel"]
-            match_id = channel.replace("channel_", "")
-            raw_data = message["data"]
+        if message["type"] != "pmessage":
+            continue
 
-            print(f"Python heard on {channel}: {raw_data}")
+        channel = message["channel"]
+        raw_data = message["data"]
 
-            try:
-                data = json.loads(raw_data)
-                action = data.get("action")
-                
-                if action == "START_MATCH":
-                    print(f"Match {match_id} Kickoff! Checking who goes first...")
-                    state = await state_manager.get_state(match_id)
-                    
-                    if state and state.schedule[state.current_turn_index].player_type == "ai":
-                        print("AI speaks first! Starting generation...")
-                        asyncio.create_task(simulate_ai_thinking(client, channel))
-                    else:
-                        print("👤 Human speaks first. Python is going back to sleep.")
-                
-                elif action == "TURN_CHANGED":
-                    print(f"Go updated the scoreboard for match {match_id}! Checking who is next...")
-                    
-                    # 1. READ ONLY! Do not advance the turn here.
-                    state = await state_manager.get_state(match_id)
-                    
-                    if state and state.status != "finished":
-                        # 2. Is the NEXT speaker an AI?
-                        next_speaker = state.schedule[state.current_turn_index]
-                        if next_speaker.player_type == "ai":
-                            print(f"It is the {next_speaker.role}'s turn. AI waking up...")
-                            asyncio.create_task(simulate_ai_thinking(client, channel))
-                        else:
-                            print(f"It is the {next_speaker.role}'s turn. Python going to sleep.")
-                    else:
-                        print(f"Match {match_id} is finished!")
+        print(f" Python received on {channel}: {raw_data}")
 
-            except json.JSONDecodeError:
-                pass 
-            except Exception as e:
-                print(f"Python Consumer Error: {e}")
+        try:
+            # -------------------------------
+            # 1. Parse Event
+            # -------------------------------
+            event = BaseEvent.model_validate_json(raw_data)
+            match_id = event.match_id
+            payload = event.payload or {}
 
-async def simulate_ai_thinking(redis_client, channel: str):
-    """Fakes an LLM streaming words one by one."""
-    fake_rebuttal = ["I", " completely", " disagree.", " Here", " is", " why."]
-    
-    for word in fake_rebuttal:
-        await asyncio.sleep(0.5) 
-        
-        chunk_event = {
-            "event": "AI_TOKEN",
-            "text": word
-        }
-        await redis_client.publish(channel, json.dumps(chunk_event))
-        print(f"Python streamed token: '{word}'")
+            # -------------------------------
+            # 2. Get State
+            # -------------------------------
+            state = await state_manager.get_state(match_id)
 
-    end_event = {"event": "AI_THOUGHT_COMPLETE"}
-    await redis_client.publish(channel, json.dumps(end_event))
-    print("Python finished thinking.")
+            if not state:
+                print(f" No state found for match {match_id}")
+                continue
+
+            # -------------------------------
+            # 3. Handle USER INPUT
+            # -------------------------------
+            if event.type == EventType.USER_SPOKE:
+                if "text" in payload:
+                    state.transcript.append({
+                        "speaker": "human",
+                        "text": payload["text"]
+                    })
+                    await state_manager.update_state(state)
+
+            # -------------------------------
+            # 4. Handle AI COMPLETION → SNIPER
+            # -------------------------------
+            if event.type == EventType.AI_THOUGHT_COMPLETE:
+                print(f" AI finished speaking → triggering sniper for {match_id}")
+                asyncio.create_task(generate_poi(match_id))
+
+            # -------------------------------
+            # 5. Evaluate Rules
+            # -------------------------------
+            decision = evaluate_rules(event, state)
+
+            # -------------------------------
+            # 6. EXECUTION LAYER
+            # -------------------------------
+
+            #  Advance Turn
+
+            if event.type == EventType.MATCH_ENDED:
+                print(f"Adjudicating match {match_id}")
+                asyncio.create_task(adjudicate_match(match_id))
+
+
+            if decision.should_advance_turn:
+                state.current_turn_index += 1
+                await state_manager.update_state(state)
+
+                next_event = {
+                    "type": EventType.TURN_CHANGED,
+                    "match_id": match_id,
+                    "payload": {}
+                }
+
+                await client.publish(channel, json.dumps(next_event))
+                print(f" Turn advanced for match {match_id}")
+
+            #  Trigger AI
+            if decision.should_ai_speak:
+                print(f" AI turn triggered for match {match_id}")
+                asyncio.create_task(generate_ai_speech(match_id))
+
+            #  End Match (future)
+            if decision.is_match_finished:
+                end_event = {
+                    "type": EventType.MATCH_ENDED,
+                    "match_id": match_id,
+                    "payload": {}
+                }
+
+                await client.publish(channel, json.dumps(end_event))
+                print(f" Match ended for {match_id}")
+
+        except json.JSONDecodeError:
+            print(" Invalid JSON received")
+
+        except Exception as e:
+            print(f" Python Consumer Error: {e}")

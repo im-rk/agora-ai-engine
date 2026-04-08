@@ -1,8 +1,3 @@
-# File: src/api/rest/matches.py
-# RESTful API following enterprise design patterns
-# Parent Resource: Match (DebateSession)
-# All endpoints revolve around /api/v1/matches/{match_id}
-
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 from src.core.database import get_db
