@@ -1,35 +1,32 @@
-# from src.services.llm_service import ask_llm
-
-# if __name__ == "__main__":
-#     res = ask_llm(
-#         system_prompt="You are a helpful assistant",
-#         user_prompt="What is AI?"
-#     )
-#     print(res)
-
-# from src.services.embedding_service import get_embedding
-
-# if __name__ == "__main__":
-#     emb = get_embedding("AI improves education")
-#     print(len(emb))
-
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
+import asyncio
+
 from src.api.rest import matches
+from src.workers.redis_consumer import start_redis_consumer
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle: startup and shutdown."""
+    worker_task = asyncio.create_task(start_redis_consumer())
+    yield
+    worker_task.cancel()
+
 
 # Create FastAPI app
 app = FastAPI(
     title="Agora AI Debate Engine",
     description="AI-powered debate system with real-time agents",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Include routers
 app.include_router(matches.router, prefix="/api/v1/matches", tags=["Matches"])
 
 
-# Root endpoint (health check)
 @app.get("/")
-def root():
-    return {
-        "message": "Agora AI Debate Engine is running 🚀"
-    }
+def health_check():
+    """Health check endpoint."""
+    return {"status": "ok", "message": "Agora AI Debate Engine is running"}
