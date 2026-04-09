@@ -13,6 +13,10 @@ async def get_redis():
     """Dependency injection for FastAPI endpoints."""
     return redis_client
 
+def get_redis_async():
+    """Get async Redis client for non-endpoint code."""
+    return redis_client
+
 async def close_redis():
     """Close Redis connection gracefully."""
     await redis_client.close()
