@@ -1,17 +1,3 @@
-"""
-Redis Stream Callback: Publishes LLM tokens to Redis in real-time.
-
-Enables streaming responses where each token is published to a Redis
-stream channel, allowing frontend to display text as it's generated.
-
-Flow:
-  LLM starts → AI_THOUGHT_START
-    ↓ (per token)
-  Generate token → AI_TOKEN
-    ↓ (when done)
-  LLM ends → AI_THOUGHT_COMPLETE
-"""
-
 import json
 from langchain_core.callbacks import AsyncCallbackHandler
 
