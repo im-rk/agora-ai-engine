@@ -2,8 +2,10 @@ import asyncio
 import json
 import redis.asyncio as redis
 from src.core.config import settings
+from src.core.database import SessionLocal
 from src.engine.state import state_manager
 from src.ai.agents.debater import DebaterAgent
+from src.repositories.debate_repo import create_turn, log_ai_call
 
 
 async def start_redis_consumer():
@@ -96,6 +98,7 @@ async def generate_ai_response(
         match_id: Unique match identifier
         state: DebateState object from state_manager
     """
+    db = None
     try:
         # Get current speaker info
         current_speaker = state.schedule[state.current_turn_index]
@@ -123,18 +126,43 @@ async def generate_ai_response(
         
         # STEP 3: Persist the generated response back to state
         # Create turn object with speaker role and content
-        turn = {
+        turn_data = {
             "speaker_role": speaker_role,
             "content": response
         }
         
         # Append to transcript
-        state.transcript.append(turn)
+        state.transcript.append(turn_data)
         print(f"Appended {speaker_role} response to transcript. Total turns: {len(state.transcript)}")
         
         # Save updated state back to Redis
         await state_manager.update_state(state)
         print(f"State persisted to Redis for match {match_id}")
+        
+        # STEP 4: Save turn to Supabase
+        db = SessionLocal()
+        turn = create_turn(
+            db=db,
+            session_id=match_id,
+            turn_number=state.current_turn_index,
+            speaker_role=speaker_role,
+            speaker_type="AI",
+            transcript_text=response,
+            duration_seconds=0  # Will be updated if we have timing data
+        )
+        print(f"Turn record created in Supabase: {turn.id}")
+        
+        # STEP 5: Log AI call to AICallLog
+        log_ai_call(
+            db=db,
+            session_id=match_id,
+            agent_name="DebaterAgent",
+            prompt_used=f"Debate turn {state.current_turn_index}: Generate response for {speaker_role}",
+            model_version="mixtral-8x7b-32768",
+            temperature=0.8,
+            raw_output=response
+        )
+        print(f"AI call logged to Supabase for match {match_id}")
         
     except Exception as e:
         print(f"Error in generate_ai_response: {e}")
@@ -144,6 +172,9 @@ async def generate_ai_response(
             "error_message": f"Failed to generate response: {str(e)}"
         }
         await client.publish(channel, json.dumps(error_event))
+    finally:
+        if db:
+            db.close()
 
 
 def reconstruct_transcript(state: object) -> str:
