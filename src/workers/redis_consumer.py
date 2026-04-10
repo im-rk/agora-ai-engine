@@ -2,8 +2,10 @@ import asyncio
 import json
 import redis.asyncio as redis
 from src.core.config import settings
+from src.core.database import SessionLocal
 from src.engine.state import state_manager
 from src.ai.agents.debater import DebaterAgent
+from src.repositories.debate_repo import create_turn, log_ai_call
 
 
 async def start_redis_consumer():
@@ -96,10 +98,11 @@ async def generate_ai_response(
         match_id: Unique match identifier
         state: DebateState object from state_manager
     """
+    db = None
     try:
         # Get current speaker info
         current_speaker = state.schedule[state.current_turn_index]
-        speaker_role = current_speaker.role  # "affirmative" or "negative"
+        speaker_role = current_speaker.role  
         speaker_id = f"{match_id}:{state.current_turn_index}"
         
         # Reconstruct debate transcript from state history
@@ -121,6 +124,46 @@ async def generate_ai_response(
         
         print(f"AI Response generated ({len(response)} chars): {response[:100]}...")
         
+        # STEP 3: Persist the generated response back to state
+        # Create turn object with speaker role and content
+        turn_data = {
+            "speaker_role": speaker_role,
+            "content": response
+        }
+        
+        # Append to transcript
+        state.transcript.append(turn_data)
+        print(f"Appended {speaker_role} response to transcript. Total turns: {len(state.transcript)}")
+        
+        # Save updated state back to Redis
+        await state_manager.update_state(state)
+        print(f"State persisted to Redis for match {match_id}")
+        
+        # STEP 4: Save turn to Supabase
+        db = SessionLocal()
+        turn = create_turn(
+            db=db,
+            session_id=match_id,
+            turn_number=state.current_turn_index,
+            speaker_role=speaker_role,
+            speaker_type="AI",
+            transcript_text=response,
+            duration_seconds=0  # Will be updated if we have timing data
+        )
+        print(f"Turn record created in Supabase: {turn.id}")
+        
+        # STEP 5: Log AI call to AICallLog
+        log_ai_call(
+            db=db,
+            session_id=match_id,
+            agent_name="DebaterAgent",
+            prompt_used=f"Debate turn {state.current_turn_index}: Generate response for {speaker_role}",
+            model_version="mixtral-8x7b-32768",
+            temperature=0.8,
+            raw_output=response
+        )
+        print(f"AI call logged to Supabase for match {match_id}")
+        
     except Exception as e:
         print(f"Error in generate_ai_response: {e}")
         # Publish error event to Redis
@@ -129,6 +172,9 @@ async def generate_ai_response(
             "error_message": f"Failed to generate response: {str(e)}"
         }
         await client.publish(channel, json.dumps(error_event))
+    finally:
+        if db:
+            db.close()
 
 
 def reconstruct_transcript(state: object) -> str:
@@ -143,11 +189,11 @@ def reconstruct_transcript(state: object) -> str:
     Returns:
         Formatted debate transcript string
     """
-    if not hasattr(state, 'transcript_history') or not state.transcript_history:
+    if not hasattr(state, 'transcript') or not state.transcript:
         return "Debate just started. No prior arguments."
     
     transcript_lines = []
-    for turn in state.transcript_history:
+    for turn in state.transcript:
         speaker_role = turn.get("speaker_role", "Unknown")
         content = turn.get("content", "")
         transcript_lines.append(f"{speaker_role}: {content}")
