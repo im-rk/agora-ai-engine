@@ -89,7 +89,7 @@ class DebaterAgent:
                     session_id=session_id,
                     agent_name="DebaterAgent:Phase1-ClashMatrixParser",
                     prompt_used=CLASH_MATRIX_PARSER_PROMPT[:500],
-                    model_version="mixtral-8x7b-32768",
+                    model_version="llama-3.1-70b-versatile",
                     temperature=0.1,
                     raw_output=response.content[:1000]
                 )
@@ -146,7 +146,7 @@ class DebaterAgent:
                     session_id=session_id,
                     agent_name="DebaterAgent:Phase2-QuerySynthesis",
                     prompt_used=QUERY_SYNTHESIS_PROMPT[:500],
-                    model_version="mixtral-8x7b-32768",
+                    model_version="llama-3.1-70b-versatile",
                     temperature=0.3,
                     raw_output=response.content[:1000]
                 )
@@ -286,7 +286,7 @@ class DebaterAgent:
                     session_id=session_id,
                     agent_name="DebaterAgent:Phase4-ResponseGeneration",
                     prompt_used=RESPONSE_GENERATION_PROMPT[:500],
-                    model_version="mixtral-8x7b-32768",
+                    model_version="llama-3.1-70b-versatile",
                     temperature=0.7,
                     raw_output=response.content[:1000]
                 )
