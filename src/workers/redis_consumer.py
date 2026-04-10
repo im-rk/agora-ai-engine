@@ -5,7 +5,7 @@ from src.core.config import settings
 from src.core.database import SessionLocal
 from src.engine.state import state_manager
 from src.ai.agents.debater import DebaterAgent
-from src.repositories.debate_repo import create_turn, log_ai_call
+from src.repositories.debate_repo import create_turn
 
 
 async def start_redis_consumer():
@@ -84,7 +84,7 @@ async def generate_ai_response(
     state: object
 ):
     """
-    Execute 4-phase FAANG debate pipeline with streaming.
+    Execute 4-phase debate pipeline with streaming.
     
     Phases:
     1. State Tracking: Parse transcript into clash matrix
@@ -119,7 +119,8 @@ async def generate_ai_response(
             transcript=transcript,
             speaker_role=speaker_role,
             speaker_id=speaker_id,
-            personality_trait="balanced"
+            personality_trait="balanced",
+            session_id=match_id  # Pass session_id for logging all LLM calls
         )
         
         print(f"AI Response generated ({len(response)} chars): {response[:100]}...")
@@ -151,18 +152,6 @@ async def generate_ai_response(
             duration_seconds=0  # Will be updated if we have timing data
         )
         print(f"Turn record created in Supabase: {turn.id}")
-        
-        # STEP 5: Log AI call to AICallLog
-        log_ai_call(
-            db=db,
-            session_id=match_id,
-            agent_name="DebaterAgent",
-            prompt_used=f"Debate turn {state.current_turn_index}: Generate response for {speaker_role}",
-            model_version="mixtral-8x7b-32768",
-            temperature=0.8,
-            raw_output=response
-        )
-        print(f"AI call logged to Supabase for match {match_id}")
         
     except Exception as e:
         print(f"Error in generate_ai_response: {e}")
