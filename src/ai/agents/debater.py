@@ -207,12 +207,11 @@ class DebaterAgent:
         # Create Redis channel for this speaker
         channel = f"debate:{speaker_id}:response"
         
-        # Attach streaming callback
+        # Create streaming callback handler
         callback = RedisStreamingCallbackHandler(
             redis_client=self.redis_client,
             channel=channel
         )
-        llm.callbacks = [callback]
         
         # Format evidence into readable ammo
         evidence_text = "\n".join([
@@ -233,8 +232,11 @@ class DebaterAgent:
             HumanMessage(content="Generate a compelling debate response.")
         ]
         
-        # Stream response (tokens published to Redis via callback)
-        response = await llm.ainvoke(messages)
+        # Stream response with request-scoped callbacks (only for this invocation)
+        response = await llm.ainvoke(
+            messages,
+            config={"callbacks": [callback]}
+        )
         
         return response.content
 

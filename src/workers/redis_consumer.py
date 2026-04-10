@@ -143,11 +143,11 @@ def reconstruct_transcript(state: object) -> str:
     Returns:
         Formatted debate transcript string
     """
-    if not hasattr(state, 'transcript_history') or not state.transcript_history:
+    if not hasattr(state, 'transcript') or not state.transcript:
         return "Debate just started. No prior arguments."
     
     transcript_lines = []
-    for turn in state.transcript_history:
+    for turn in state.transcript:
         speaker_role = turn.get("speaker_role", "Unknown")
         content = turn.get("content", "")
         transcript_lines.append(f"{speaker_role}: {content}")
