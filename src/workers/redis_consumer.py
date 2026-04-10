@@ -99,7 +99,7 @@ async def generate_ai_response(
     try:
         # Get current speaker info
         current_speaker = state.schedule[state.current_turn_index]
-        speaker_role = current_speaker.role  # "affirmative" or "negative"
+        speaker_role = current_speaker.role  
         speaker_id = f"{match_id}:{state.current_turn_index}"
         
         # Reconstruct debate transcript from state history
@@ -120,6 +120,21 @@ async def generate_ai_response(
         )
         
         print(f"AI Response generated ({len(response)} chars): {response[:100]}...")
+        
+        # STEP 3: Persist the generated response back to state
+        # Create turn object with speaker role and content
+        turn = {
+            "speaker_role": speaker_role,
+            "content": response
+        }
+        
+        # Append to transcript
+        state.transcript.append(turn)
+        print(f"Appended {speaker_role} response to transcript. Total turns: {len(state.transcript)}")
+        
+        # Save updated state back to Redis
+        await state_manager.update_state(state)
+        print(f"State persisted to Redis for match {match_id}")
         
     except Exception as e:
         print(f"Error in generate_ai_response: {e}")
