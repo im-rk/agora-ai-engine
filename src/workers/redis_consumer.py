@@ -48,28 +48,52 @@ async def start_redis_consumer():
                         print("Human speaks first. Python is going back to sleep.")
                 
                 elif action == "TURN_CHANGED":
-                    print(f"Frontend updated the scoreboard for match {match_id}! Checking who is next...")
-                    
-                    # READ ONLY! Do not advance the turn here.
+                    # Go just incremented the turn and tells us the new index.
+                    # We MUST sync our state from Go's event BEFORE doing anything.
+                    # Go's event is the source of truth for "which turn are we on".
+                    new_turn_index = data.get("current_turn_index", 0)
+                    print(f"TURN_CHANGED received. Go says we are now on turn index: {new_turn_index}")
+
+                    # Read Python's rich state from Redis
                     state = await state_manager.get_state(match_id)
-                    
-                    if state and state.status != "finished":
-                        # Is the NEXT speaker an AI?
-                        next_speaker = state.schedule[state.current_turn_index]
-                        if next_speaker.player_type == "ai":
-                            print(f"It is the {next_speaker.role}'s turn. AI waking up...")
-                            asyncio.create_task(
-                                generate_ai_response(
-                                    client=client,
-                                    channel=channel,
-                                    match_id=match_id,
-                                    state=state
-                                )
+
+                    if not state:
+                        print(f"[WARN] No Python state found for match {match_id}.")
+                        continue
+
+                    # Sync Go's authoritative index into Python's state and save it
+                    state.current_turn_index = new_turn_index
+                    await state_manager.update_state(state)
+
+                    # Has every turn been delivered? (index past end of schedule)
+                    if state.current_turn_index >= len(state.schedule):
+                        print(f"All turns complete for match {match_id}. Marking finished...")
+                        state.status = "finished"
+                        await state_manager.update_state(state)
+                        # TODO Step 4: wire adjudication here
+                        await client.publish(channel, json.dumps({
+                            "event": "MATCH_COMPLETE",
+                            "message": "All speeches delivered. Adjudication starting..."
+                        }))
+                        continue
+
+                    # Debate still going — check who speaks next
+                    next_speaker = state.schedule[state.current_turn_index]
+                    if next_speaker.player_type == "ai":
+                        print(f"It is the {next_speaker.role}'s turn. AI waking up...")
+                        asyncio.create_task(
+                            generate_ai_response(
+                                client=client,
+                                channel=channel,
+                                match_id=match_id,
+                                state=state
                             )
-                        else:
-                            print(f"It is the {next_speaker.role}'s turn. Python going to sleep.")
+                        )
                     else:
-                        print(f"Match {match_id} is finished!")
+                        print(f"It is the {next_speaker.role}'s turn. Waiting for human.")
+
+                else:
+                    print(f"Match {match_id} is finished!")
 
             except json.JSONDecodeError:
                 pass 
@@ -152,6 +176,10 @@ async def generate_ai_response(
             duration_seconds=0  # Will be updated if we have timing data
         )
         print(f"Turn record created in Supabase: {turn.id}")
+
+        db.commit()   # Makes the turn record permanent in the database
+        print(f"Turn record committed to Supabase: {turn.id}")
+
         
     except Exception as e:
         print(f"Error in generate_ai_response: {e}")
