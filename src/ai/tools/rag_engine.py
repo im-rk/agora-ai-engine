@@ -6,40 +6,22 @@ counter-arguments, and evidence to support live debate responses.
 """
 
 from functools import lru_cache
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import SupabaseVectorStore
+from langchain_huggingface import HuggingFaceEmbeddings
 from supabase import create_client
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+from src.core.database import SessionLocal
+from src.models.setup import ArgumentEmbedding
 from src.core.config import settings
 
 
 @lru_cache(maxsize=1)
-def get_vector_store() -> SupabaseVectorStore:
-    """
-    Get Supabase vector store instance (cached singleton).
-    
-    Uses HuggingFace embeddings for free, local embedding generation.
-    Connects to Supabase pgvector for semantic search.
-    
-    Returns:
-        SupabaseVectorStore instance
-    
-    Raises:
-        ValueError: If Supabase credentials not configured
-    """
-    if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
-        raise ValueError("SUPABASE_URL and SUPABASE_KEY must be configured")
-    
-    supabase_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
+def get_embeddings_model():
+    """Get cached HuggingFace embeddings model."""
+    return HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-roberta-large-v1",
         model_kwargs={"device": "cpu"}
-    )
-    
-    return SupabaseVectorStore(
-        client=supabase_client,
-        embedding=embeddings,
-        table_name="argument_embeddings",
-        query_name="match_documents"
     )
 
 
@@ -47,8 +29,8 @@ class RAGEngine:
     """Retrieval-Augmented Generation engine for debate responses."""
     
     def __init__(self):
-        """Initialize RAG engine with cached vector store."""
-        self.vector_store = get_vector_store()
+        """Initialize RAG engine with embeddings model."""
+        self.embeddings = get_embeddings_model()
     
     async def aretrieve_counter_arguments(
         self,
@@ -56,10 +38,9 @@ class RAGEngine:
         k: int = 3
     ) -> list[dict]:
         """
-        Async retrieve relevant evidence for a given topic.
+        Async retrieve relevant evidence for a given topic using pgvector.
         
-        Performs semantic search over stored arguments, counter-arguments,
-        and evidence. Returns results as dicts for further re-ranking.
+        Performs semantic search over stored arguments using cosine similarity.
         
         Args:
             topic: Search topic or opponent claim
@@ -68,25 +49,44 @@ class RAGEngine:
         Returns:
             List of dicts with ['text', 'score', 'id'] keys
         """
+        db = None
         try:
-            # Perform similarity search
-            docs = self.vector_store.similarity_search_with_score(topic, k=k)
+            # Embed the query
+            query_embedding = self.embeddings.embed_query(topic)
             
-            # Format results
-            results = []
-            for doc, score in docs:
-                results.append({
-                    "text": doc.page_content,
-                    "score": score,
-                    "id": doc.metadata.get("id", hash(doc.page_content)),
-                    "source": doc.metadata.get("source", "case_prep")
+            # Get database session and perform vector search
+            db = SessionLocal()
+            
+            # Use pgvector similarity search (cosine distance)
+            results = db.query(
+                ArgumentEmbedding.id,
+                ArgumentEmbedding.content,
+                ArgumentEmbedding.argument_type,
+                (ArgumentEmbedding.embedding.cosine_distance(query_embedding)).label("distance")
+            ).order_by("distance").limit(k).all()
+            
+            # Format results (lower distance = higher similarity)
+            formatted = []
+            for result_id, content, arg_type, distance in results:
+                # Convert distance to similarity score (0-1 range)
+                similarity_score = 1 - distance  # Cosine distance to similarity
+                formatted.append({
+                    "text": content,
+                    "score": float(similarity_score),
+                    "id": str(result_id),
+                    "source": "case_prep",
+                    "type": arg_type
                 })
             
-            return results
+            return formatted
         
         except Exception as e:
-            print(f"Error retrieving evidence: {e}")
+            if str(e).strip():
+                print(f"Error retrieving evidence: {type(e).__name__}: {str(e)[:200]}")
             return []
+        finally:
+            if db:
+                db.close()
     
     async def retrieve_counter_arguments(
         self,
