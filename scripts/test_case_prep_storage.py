@@ -7,6 +7,7 @@ import asyncio
 import uuid
 from src.core.database import SessionLocal
 from src.models.setup import Motion, MotionCategory, CasePrep, ArgumentEmbedding
+from src.models.user import User
 from src.repositories.case_prep_repo import create_case_prep, update_case_prep
 from src.ai.tools.rag_engine import RAGEngine
 
@@ -20,8 +21,20 @@ async def test_case_prep_storage():
     try:
         db = SessionLocal()
         
-        # Test 1: Create a test motion
-        print("\n[Test 1] Creating test motion...")
+        # Test 1: Create a test user
+        print("\n[Test 1] Creating test user...")
+        user = User(
+            id=uuid.uuid4(),
+            email=f"test_user_{uuid.uuid4().hex[:8]}@test.com",
+            password_hash="hashed_password",
+            display_name="Test Debater"
+        )
+        db.add(user)
+        db.flush()
+        print(f"[PASS] User created: {user.id}")
+        
+        # Test 2: Create a test motion
+        print("\n[Test 2] Creating test motion...")
         motion = Motion(
             id=uuid.uuid4(),
             motion_text="This house believes artificial intelligence will have a net positive impact on society",
@@ -31,12 +44,11 @@ async def test_case_prep_storage():
         db.flush()
         print(f"[PASS] Motion created: {motion.id}")
         
-        # Test 2: Create case prep
-        print("\n[Test 2] Creating case prep...")
-        user_id = uuid.uuid4()
+        # Test 3: Create case prep
+        print("\n[Test 3] Creating case prep...")
         case_prep = create_case_prep(
             db=db,
-            user_id=str(user_id),
+            user_id=str(user.id),
             motion_id=str(motion.id),
             side="affirmative"
         )
@@ -68,7 +80,8 @@ async def test_case_prep_storage():
         
         # Create embeddings for each argument
         from langchain_huggingface import HuggingFaceEmbeddings
-        embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        # Use all-roberta-large-v1 which produces 1024 dimensions (matches DB schema)
+        embeddings_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-roberta-large-v1")
         
         for arg in arguments:
             text = f"{arg['argument']} - {arg['impact']}"
@@ -92,7 +105,7 @@ async def test_case_prep_storage():
         
         # Try to retrieve by searching for similar arguments
         query = "artificial intelligence productivity benefits"
-        results = await rag.aretrieve_arguments(topic=query, k=2)
+        results = await rag.aretrieve_counter_arguments(topic=query, k=2)
         
         if results:
             print(f"[PASS] Retrieved {len(results)} similar arguments from RAG")
@@ -113,11 +126,13 @@ async def test_case_prep_storage():
         return True
         
     except Exception as e:
-        print(f"[FAIL] Case Prep Storage Test FAILED: {e}\n")
+        error_msg = str(e)
+        # Hide SQL details for cleaner output
+        if "[SQL:" in error_msg:
+            error_msg = error_msg.split("[SQL:")[0].strip()
+        print(f"[FAIL] Case Prep Storage Test FAILED: {error_msg}")
         if db:
             db.rollback()
-        import traceback
-        traceback.print_exc()
         return False
     finally:
         if db:

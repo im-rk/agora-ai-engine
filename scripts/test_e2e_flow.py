@@ -34,9 +34,8 @@ async def test_e2e_flow():
         user = User(
             id=uuid.uuid4(),
             email="test@debate.local",
-            username="test_debater",
-            hashed_password="hashed_test_pwd",
-            created_at=datetime.now(timezone.utc)
+            display_name="test_debater",
+            password_hash="hashed_test_pwd"
         )
         db.add(user)
         db.flush()
@@ -147,7 +146,7 @@ async def test_e2e_flow():
         if db:
             db.close()
         if redis_client:
-            await redis_client.close()
+            await redis_client.aclose()
 
 
 if __name__ == "__main__":

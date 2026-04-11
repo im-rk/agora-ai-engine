@@ -13,7 +13,7 @@ from src.core.config import settings
 
 @lru_cache(maxsize=1)
 def get_groq_client(
-    model: str = "llama-3.1-70b-versatile",
+    model: str = "llama-3.1-8b-instant",
     temperature: float = 0.7,
     streaming: bool = False
 ) -> ChatGroq:
@@ -25,7 +25,7 @@ def get_groq_client(
     a new instance per request.
     
     Args:
-        model: Groq model name (default: llama-3.1-70b-versatile)
+        model: Groq model name (default: llama-3.1-8b-instant)
         temperature: Sampling temperature (0-1, default: 0.7)
         streaming: Enable token streaming (default: False)
             - True: Tokens streamed to callbacks (real-time UI)

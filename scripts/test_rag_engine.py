@@ -27,10 +27,10 @@ async def test_rag_engine():
         else:
             print(f"   [WARN] No results found (may be empty database)")
         
-        # Test 2: Retrieve arguments
-        print("\n[Test 2] Retrieving supporting arguments...")
+        # Test 2: Retrieve counter-arguments (different query)
+        print("\n[Test 2] Retrieving counter-arguments (different query)...")
         query2 = "government regulation needed"
-        results2 = await rag.aretrieve_arguments(topic=query2, k=3)
+        results2 = await rag.aretrieve_counter_arguments(topic=query2, k=3)
         
         print(f"[PASS] Retrieved {len(results2)} results for: '{query2}'")
         if results2:

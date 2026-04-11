@@ -74,11 +74,12 @@ class DebaterAgent:
         """
         llm = get_groq_client(streaming=False, temperature=0.1)
 
-        prompt = SystemMessage(content=CLASH_MATRIX_PARSER_PROMPT) + HumanMessage(
-            content=f"Parse this transcript:\n\n{transcript}"
-        )
+        prompt = [
+            SystemMessage(content=CLASH_MATRIX_PARSER_PROMPT),
+            HumanMessage(content=f"Parse this transcript:\n\n{transcript}")
+        ]
 
-        response = await llm.ainvoke([prompt])
+        response = await llm.ainvoke(prompt)
         
         # Log the LLM call
         if session_id:
@@ -89,10 +90,13 @@ class DebaterAgent:
                     session_id=session_id,
                     agent_name="DebaterAgent:Phase1-ClashMatrixParser",
                     prompt_used=CLASH_MATRIX_PARSER_PROMPT[:500],
-                    model_version="llama-3.1-70b-versatile",
+                    model_version="llama-3.1-8b-instant",
                     temperature=0.1,
                     raw_output=response.content[:1000]
                 )
+            except Exception as log_error:
+                print(f"[WARN] Failed to log AI call: {type(log_error).__name__}")
+                db.rollback()
             finally:
                 db.close()
         
@@ -129,13 +133,12 @@ class DebaterAgent:
         """
         llm = get_groq_client(streaming=False, temperature=0.3)
 
-        prompt = SystemMessage(
-            content=QUERY_SYNTHESIS_PROMPT.format(speaker_role=speaker_role)
-        ) + HumanMessage(
-            content=f"Generate search queries for:\n{json.dumps(clash_matrix, indent=2)}"
-        )
+        prompt = [
+            SystemMessage(content=QUERY_SYNTHESIS_PROMPT.format(speaker_role=speaker_role)),
+            HumanMessage(content=f"Generate search queries for:\n{json.dumps(clash_matrix, indent=2)}")
+        ]
 
-        response = await llm.ainvoke([prompt])
+        response = await llm.ainvoke(prompt)
         
         # Log the LLM call
         if session_id:
@@ -146,10 +149,13 @@ class DebaterAgent:
                     session_id=session_id,
                     agent_name="DebaterAgent:Phase2-QuerySynthesis",
                     prompt_used=QUERY_SYNTHESIS_PROMPT[:500],
-                    model_version="llama-3.1-70b-versatile",
+                    model_version="llama-3.1-8b-instant",
                     temperature=0.3,
                     raw_output=response.content[:1000]
                 )
+            except Exception as log_error:
+                print(f"[WARN] Failed to log AI call: {type(log_error).__name__}")
+                db.rollback()
             finally:
                 db.close()
         
@@ -286,10 +292,13 @@ class DebaterAgent:
                     session_id=session_id,
                     agent_name="DebaterAgent:Phase4-ResponseGeneration",
                     prompt_used=RESPONSE_GENERATION_PROMPT[:500],
-                    model_version="llama-3.1-70b-versatile",
+                    model_version="llama-3.1-8b-instant",
                     temperature=0.7,
                     raw_output=response.content[:1000]
                 )
+            except Exception as log_error:
+                print(f"[WARN] Failed to log AI call: {type(log_error).__name__}")
+                db.rollback()
             finally:
                 db.close()
         

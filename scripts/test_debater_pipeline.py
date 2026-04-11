@@ -4,6 +4,7 @@ Purpose: Test full FAANG debate pipeline orchestration
 """
 
 import asyncio
+import uuid
 from src.ai.agents.debater import DebaterAgent
 from src.core.redis_client import get_redis_async
 
@@ -30,7 +31,7 @@ async def test_debater_pipeline():
         # Test parameters
         speaker_role = "MG"  # Member of Government (affirmative)
         speaker_id = "test:debater:mug_001"
-        match_id = "test:match:001"
+        match_id = str(uuid.uuid4())
         
         # Test 1: Phase 1 - Clash Matrix
         print("\n[Phase 1] Parsing Clash Matrix...")
@@ -92,7 +93,7 @@ async def test_debater_pipeline():
         return False
     finally:
         if redis_client:
-            await redis_client.close()
+            await redis_client.aclose()
 
 
 if __name__ == "__main__":
