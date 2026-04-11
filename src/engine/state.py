@@ -21,7 +21,7 @@ class MatchStateManager:
     def _generate_schedule(self,format_type:str,human_side:str,preferred_role:Optional[str]=None)->list[Turn]:
         """Builds the exact turn order based on the debate format"""
 
-        if format_type.lower() == "asian parliamentary":
+        if format_type.lower() in  ["asian parliamentary", "ap"]:
             schedule = [
                 Turn(role="Prime Minister", side="Government", player_type="ai"),
                 Turn(role="Leader of Opposition", side="Opposition", player_type="ai"),
@@ -30,7 +30,7 @@ class MatchStateManager:
                 Turn(role="Government Whip", side="Government", player_type="ai"),
                 Turn(role="Opposition Whip", side="Opposition", player_type="ai"),
             ]
-        elif format_type.lower() == "british parliamentary":
+        elif format_type.lower() in ["british parliamentary", "bp"]:
             schedule = [
                 Turn(role="Prime Minister", side="Government", player_type="ai"),
                 Turn(role="Leader of Opposition", side="Opposition", player_type="ai"),
