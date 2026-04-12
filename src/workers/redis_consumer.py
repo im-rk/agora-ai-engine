@@ -70,7 +70,8 @@ async def start_redis_consumer():
                         print(f"All turns complete for match {match_id}. Marking finished...")
                         state.status = "finished"
                         await state_manager.update_state(state)
-                        # TODO Step 4: wire adjudication here
+                        asyncio.create_task(trigger_adjudication(client, channel, match_id, state))
+
                         await client.publish(channel, json.dumps({
                             "event": "MATCH_COMPLETE",
                             "message": "All speeches delivered. Adjudication starting..."
@@ -317,3 +318,62 @@ async def handle_poi_to_ai(
             "response": result["response_text"],
         }))
 
+
+
+
+async def trigger_adjudication(client, channel: str, match_id: str, state):
+    """
+    Called when all turns are complete (state.current_turn_index >= len(state.schedule)).
+    Runs the full adjudication pipeline and publishes MATCH_COMPLETE to the channel.
+    
+    Flow:
+    1. Fetch session details from DB (motion text, human role, user ID)
+    2. Call grading_service.run_adjudication()
+    3. Publish MATCH_COMPLETE event with summary
+    """
+    from src.services.grading_service import run_adjudication
+    from src.models.debate import DebateSession
+
+    db = SessionLocal()
+    try:
+        # Fetch the DebateSession to get motion, format, user details
+        session = db.query(DebateSession).filter(
+            DebateSession.id == match_id
+        ).first()
+
+        if not session:
+            print(f"[Adjudication] ERROR: Session {match_id} not found in DB.")
+            return
+
+        # Run the full adjudication pipeline
+        verdict = await run_adjudication(
+            db=db,
+            state=state,
+            session_id=match_id,
+            user_id=str(session.user_id),
+            motion_text=session.motion.motion_text,
+            format_type=session.format.value,        # "BP" or "AP"
+            human_speaker_role=session.human_role,
+        )
+
+        # Notify frontend: match is complete with summary scores
+        await client.publish(channel, json.dumps({
+            "event": "MATCH_COMPLETE",
+            "winning_team": verdict["winning_team"],
+            "gov_total_score": verdict["gov_total_score"],
+            "opp_total_score": verdict["opp_total_score"],
+            "overall_analysis": verdict.get("overall_analysis", ""),
+        }))
+
+        print(f"[Adjudication] Complete. Winner: {verdict['winning_team']}")
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[Adjudication] ERROR: {e}")
+        await client.publish(channel, json.dumps({
+            "event": "ADJUDICATION_FAILED",
+            "error": str(e),
+        }))
+    finally:
+        db.close()
