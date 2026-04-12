@@ -3,7 +3,8 @@ name = "agora-ai-engine"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
+
 
 dependencies = [
     "alembic>=1.15.2",
@@ -13,7 +14,9 @@ dependencies = [
     "grpcio>=1.80.0",
     "grpcio-tools>=1.80.0",
     "langchain>=1.2.13",
+    "langchain-huggingface>=1.2.1",
     "langchain-openai>=1.1.12",
+    "langchain>=0.2.5",
     "langfuse>=4.0.6",
     "pgvector>=0.4.2",
     "pinecone>=8.1.0",
