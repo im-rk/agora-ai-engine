@@ -14,14 +14,19 @@ async def start_redis_consumer():
     client = redis.from_url(redis_url, decode_responses=True)
     pubsub = client.pubsub()
 
-    # Listen to ALL match channels using a wildcard (*)
-    await pubsub.psubscribe("channel_*")
-    print("Python AI Worker is actively listening to all matches (channel_*)...")
+    # Listen to ALL match events: turns, completions, errors, etc.
+    # Pattern: debate:{match_id}:* catches all events
+    await pubsub.psubscribe("debate:*")
+    print("Python AI Worker is actively listening to all debate events (debate:*)...")
 
     async for message in pubsub.listen():
         if message["type"] == "pmessage":
             channel = message["channel"]
-            match_id = channel.replace("channel_", "")
+            # Extract match_id from channel format: "debate:{match_id}:turns"
+            parts = channel.split(":")
+            match_id = parts[1] if len(parts) > 1 else None
+            if not match_id:
+                continue
             raw_data = message["data"]
 
             print(f"Python heard on {channel}: {raw_data}")
@@ -48,22 +53,18 @@ async def start_redis_consumer():
                         print("Human speaks first. Python is going back to sleep.")
                 
                 elif action == "TURN_CHANGED":
-                    # Go just incremented the turn and tells us the new index.
-                    # We MUST sync our state from Go's event BEFORE doing anything.
-                    # Go's event is the source of truth for "which turn are we on".
-                    new_turn_index = data.get("current_turn_index", 0)
-                    print(f"TURN_CHANGED received. Go says we are now on turn index: {new_turn_index}")
+                    # Go just incremented the turn in Redis state.
+                    # Python reads the full state from Redis (Go already updated it).
+                    print(f"TURN_CHANGED received for match {match_id}")
 
-                    # Read Python's rich state from Redis
+                    # Read the FULL state from Redis that Go just updated
                     state = await state_manager.get_state(match_id)
 
                     if not state:
                         print(f"[WARN] No Python state found for match {match_id}.")
                         continue
-
-                    # Sync Go's authoritative index into Python's state and save it
-                    state.current_turn_index = new_turn_index
-                    await state_manager.update_state(state)
+                    
+                    print(f"Current turn index: {state.current_turn_index}")
 
                     # Has every turn been delivered? (index past end of schedule)
                     if state.current_turn_index >= len(state.schedule):
@@ -77,20 +78,23 @@ async def start_redis_consumer():
                         }))
                         continue
 
-                    # Debate still going — check who speaks next
-                    next_speaker = state.schedule[state.current_turn_index]
-                    if next_speaker.player_type == "ai":
-                        print(f"It is the {next_speaker.role}'s turn. AI waking up...")
-                        asyncio.create_task(
-                            generate_ai_response(
-                                client=client,
-                                channel=channel,
-                                match_id=match_id,
-                                state=state
+                    # Check who speaks next based on current_turn_index
+                    if state.current_turn_index < len(state.schedule):
+                        next_speaker = state.schedule[state.current_turn_index]
+                        if next_speaker.player_type == "ai":
+                            print(f"It is the {next_speaker.role}'s turn (AI). Generating response...")
+                            asyncio.create_task(
+                                generate_ai_response(
+                                    client=client,
+                                    channel=channel,
+                                    match_id=match_id,
+                                    state=state
+                                )
                             )
-                        )
+                        else:
+                            print(f"It is the {next_speaker.role}'s turn (Human). Waiting for human speech...")
                     else:
-                        print(f"It is the {next_speaker.role}'s turn. Waiting for human.")
+                        print(f"[WARN] Turn index {state.current_turn_index} is beyond schedule length {len(state.schedule)}")
 
                 else:
                     print(f"Match {match_id} is finished!")
