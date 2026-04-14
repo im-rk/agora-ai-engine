@@ -4,6 +4,7 @@ import asyncio
 
 from src.api.rest import matches
 from src.workers.redis_consumer import start_redis_consumer
+from src.api.rest import matches, history
 
 
 @asynccontextmanager
@@ -24,6 +25,7 @@ app = FastAPI(
 
 # Include routers
 app.include_router(matches.router, prefix="/api/v1/matches", tags=["Matches"])
+app.include_router(history.router, prefix="/api/v1/debates", tags=["Results"])
 
 
 @app.get("/")
