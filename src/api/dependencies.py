@@ -10,10 +10,11 @@ def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(secu
         # Cryptographically extracts the user's UUID from the Supabase Token
         payload = jwt.decode(
             credentials.credentials, 
-            os.getenv("SUPABASE_KEY"), 
+            os.getenv("SUPABASE_JWT_SECRET"), 
             algorithms=["HS256"], 
             options={"verify_aud": False}
         )
         return payload["sub"] 
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        print(f"JWT Verification Failed: {str(e)}")
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
