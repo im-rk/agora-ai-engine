@@ -32,18 +32,6 @@ class DebaterResponseMessage(BaseModel):
     redis_channel: str
 
 
-@router.post("", response_model=MatchStartResponse)
-async def create_match(
-    request: MatchStartRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    POST /api/v1/matches
-    Creates a new match and triggers AI case preparation.
-    Returns: match_id (session_id), case_prep_id, and confirmation message.
-    """
-    result = await start_new_match(db=db, request=request)
-    return result
 
 
 @router.get("/{match_id}/prep", response_model=CasePrepResponse)
