@@ -84,19 +84,20 @@ async def start_redis_consumer():
                         continue
 
                     # Debate still going — check who speaks next based on current_turn_index
-                    next_speaker = state.schedule[state.current_turn_index]
-                    if next_speaker.player_type == "ai":
-                        print(f"It is the {next_speaker.role}'s turn (AI). Generating response...")
-                        asyncio.create_task(
-                            generate_ai_response(
-                                client=client,
-                                channel=channel,
-                                match_id=match_id,
-                                state=state
+                    if state.current_turn_index < len(state.schedule):
+                        next_speaker = state.schedule[state.current_turn_index]
+                        if next_speaker.player_type == "ai":
+                            print(f"It is the {next_speaker.role}'s turn (AI). Generating response...")
+                            asyncio.create_task(
+                                generate_ai_response(
+                                    client=client,
+                                    channel=channel,
+                                    match_id=match_id,
+                                    state=state
+                                )
                             )
-                        )
-                    else:
-                        print(f"It is the {next_speaker.role}'s turn (Human). Waiting for human speech...")
+                        else:
+                            print(f"It is the {next_speaker.role}'s turn (Human). Waiting for human speech...")
 
                 elif action == "POI_OFFERED":
                     # Human clicked "Offer POI" while the AI is speaking.
