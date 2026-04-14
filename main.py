@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import asyncio
-
+from fastapi.middleware.cors import CORSMiddleware
 from src.api.rest import matches
 from src.workers.redis_consumer import start_redis_consumer
 from src.api.rest import matches, history
@@ -21,6 +21,14 @@ app = FastAPI(
     description="AI-powered debate system with real-time agents",
     version="1.0.0",
     lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # In production, change this to your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"], # This explicitly allows the OPTIONS method
+    allow_headers=["*"],
 )
 
 # Include routers
