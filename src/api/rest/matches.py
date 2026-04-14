@@ -12,6 +12,7 @@ from src.schemas.debate_schema import MatchStartRequest, MatchStartResponse, Cas
 from src.services.match_service import start_new_match
 from src.repositories import case_prep_repo
 from src.ai.agents.debater import DebaterAgent
+from src.api.dependencies import get_current_user_id
 
 router = APIRouter()
 
@@ -123,3 +124,13 @@ async def generate_live_response(
             status_code=500,
             detail=f"Error generating debate response: {str(e)}"
         )
+    
+@router.post("", response_model=MatchStartResponse)
+async def create_match(
+    request: MatchStartRequest,
+    user_id: str = Depends(get_current_user_id), # Extract user from the token!
+    db: Session = Depends(get_db)
+):
+    # Pass user_id down to the service
+    result = await start_new_match(db=db, request=request, user_id=user_id)
+    return result

@@ -34,11 +34,11 @@ def map_format(format_str: str) -> str:
     return format_map[format_str]
 
 
-async def start_new_match(db: Session, request: MatchStartRequest) -> dict:
+async def start_new_match(db: Session, request: MatchStartRequest, user_id: str) -> dict:
     """Initiates new debate match with AI case preparation."""
     try:
         # Convert string user_id to UUID for database query
-        user_uuid = UUID(request.user_id)
+        user_uuid = UUID(user_id)
         user = db.query(User).filter(User.id == user_uuid).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
