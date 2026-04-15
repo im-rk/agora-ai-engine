@@ -52,7 +52,7 @@ class AdjudicatorAgent:
 
         # GPT-4o-mini: best for structured output with complex nested JSON
         # Temperature 0.2: analytical, consistent, not creative
-        llm = get_openai_client(model="gpt-4o-mini", temperature=0.2)
+        llm = get_openai_client(temperature=0.2)
 
         messages = [
             SystemMessage(

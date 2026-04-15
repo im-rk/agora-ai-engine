@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     COHERE_API_KEY: Optional[str] = None
 
     GROQ_API_KEY: Optional[str] = None
+    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_BASE_URL: Optional[str] = None
+
     SUPABASE_URL: Optional[str] = None
     SUPABASE_KEY: Optional[str] = None
     LANGFUSE_SECRET_KEY: Optional[str] = None

@@ -6,7 +6,6 @@ counter-arguments, and evidence to support live debate responses.
 """
 
 from functools import lru_cache
-from langchain_huggingface import HuggingFaceEmbeddings
 from supabase import create_client
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import func
@@ -14,15 +13,16 @@ from sqlalchemy.orm import Session
 from src.core.database import SessionLocal
 from src.models.setup import ArgumentEmbedding
 from src.core.config import settings
+from src.services.embedding_service import get_embedding
 
+class CohereEmbeddingWrapper:
+    def embed_query(self, text: str) -> list[float]:
+        return get_embedding(text)
 
 @lru_cache(maxsize=1)
 def get_embeddings_model():
-    """Get cached HuggingFace embeddings model."""
-    return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-roberta-large-v1",
-        model_kwargs={"device": "cpu"}
-    )
+    """Get Cohere embeddings model to match database seeding and avoid 1.4GB local download."""
+    return CohereEmbeddingWrapper()
 
 
 class RAGEngine:

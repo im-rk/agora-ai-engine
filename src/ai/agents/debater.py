@@ -221,7 +221,7 @@ class DebaterAgent:
         clash_matrix: dict,
         speaker_role: str,
         evidence: list[dict],
-        speaker_id: str,
+        channel: str,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None
     ) -> str:
@@ -236,7 +236,7 @@ class DebaterAgent:
             clash_matrix: State from Phase 1
             speaker_role: "affirmative" or "negative"
             evidence: Top evidence pieces from Phase 3
-            speaker_id: Unique speaker identifier
+            channel: Redis channel to stream tokens to
             personality_trait: Optional persona override (e.g., "aggressive", "analytical")
             session_id: Debate session ID for logging
             
@@ -248,9 +248,6 @@ class DebaterAgent:
         """
         # Initialize streaming Groq client
         llm = get_groq_client(streaming=True, temperature=0.7)
-        
-        # Create Redis channel for this speaker
-        channel = f"debate:{speaker_id}:response"
         
         # Create streaming callback handler
         callback = RedisStreamingCallbackHandler(
@@ -308,7 +305,7 @@ class DebaterAgent:
         self,
         transcript: str,
         speaker_role: str,
-        speaker_id: str,
+        channel: str,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None
     ) -> str:
@@ -324,7 +321,7 @@ class DebaterAgent:
         Args:
             transcript: Full debate transcript so far
             speaker_role: "affirmative" or "negative"
-            speaker_id: Unique speaker identifier (for Redis channel)
+            channel: Redis channel to stream tokens to
             personality_trait: Optional persona (e.g., "aggressive", "analytical")
             session_id: Debate session ID for logging all LLM calls
             
@@ -345,7 +342,7 @@ class DebaterAgent:
             clash_matrix=clash_matrix,
             speaker_role=speaker_role,
             evidence=evidence,
-            speaker_id=speaker_id,
+            channel=channel,
             personality_trait=personality_trait,
             session_id=session_id
         )

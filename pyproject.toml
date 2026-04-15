@@ -30,4 +30,5 @@ dependencies = [
     "sentence-transformers>=5.3.0",
     "uvicorn>=0.42.0",
     "pyjwt>=2.12.1",
+    "cryptography>=46.0.7",
 ]

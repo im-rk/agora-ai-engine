@@ -21,17 +21,14 @@ from src.engine.state import state_manager
 
 def map_format(format_str: str) -> str:
     """Maps user-friendly format strings to standardized codes (BP/AP)."""
-    format_map = {
-        "Asian Parliamentary": "AP",
-        "British Parliamentary": "BP",
-        "AP": "AP",
-        "BP": "BP"
-    }
-
-    if format_str not in format_map:
-        raise HTTPException(status_code=400, detail="Invalid debate format")
-
-    return format_map[format_str]
+    normalized = format_str.lower().replace("_", " ").strip()
+    
+    if "asian" in normalized or normalized == "ap":
+        return "AP"
+    if "british" in normalized or normalized == "bp":
+        return "BP"
+        
+    raise HTTPException(status_code=400, detail=f"Invalid debate format received from frontend: {format_str}")
 
 
 async def start_new_match(db: Session, request: MatchStartRequest, user_id: str) -> dict:
@@ -40,8 +37,16 @@ async def start_new_match(db: Session, request: MatchStartRequest, user_id: str)
         # Convert string user_id to UUID for database query
         user_uuid = UUID(user_id)
         user = db.query(User).filter(User.id == user_uuid).first()
+        
+        # PRODUCTION GRADE: 
+        # Python should NEVER auto-create users. Users must be synchronized 
+        # automatically from Supabase auth.users via PostgreSQL native triggers.
+        # If the user is missing here, the trigger hasn't fired or run.
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise HTTPException(
+                status_code=404, 
+                detail="User profile missing from public schema. Please run the Supabase DB Trigger."
+            )
 
         motion = Motion(
             id=uuid.uuid4(),

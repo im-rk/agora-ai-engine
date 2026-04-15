@@ -44,6 +44,10 @@ async def start_redis_consumer():
 
                     if state and state.schedule[state.current_turn_index].player_type == "ai":
                         print("AI speaks first! Starting 4-phase debate pipeline...")
+                        await client.publish(channel, json.dumps({
+                            "event": "TURN_STARTED",
+                            "speaker": "ai"
+                        }))
                         asyncio.create_task(
                             generate_ai_response(
                                 client=client,
@@ -54,6 +58,10 @@ async def start_redis_consumer():
                         )
                     else:
                         print("Human speaks first. Python is going back to sleep.")
+                        await client.publish(channel, json.dumps({
+                            "event": "TURN_STARTED",
+                            "speaker": "human"
+                        }))
 
                 elif action == "TURN_CHANGED":
                     # Go just patched current_turn_index directly in Redis state ("match_state:{id}")
@@ -88,6 +96,10 @@ async def start_redis_consumer():
                         next_speaker = state.schedule[state.current_turn_index]
                         if next_speaker.player_type == "ai":
                             print(f"It is the {next_speaker.role}'s turn (AI). Generating response...")
+                            await client.publish(channel, json.dumps({
+                                "event": "TURN_STARTED",
+                                "speaker": "ai"
+                            }))
                             asyncio.create_task(
                                 generate_ai_response(
                                     client=client,
@@ -98,6 +110,10 @@ async def start_redis_consumer():
                             )
                         else:
                             print(f"It is the {next_speaker.role}'s turn (Human). Waiting for human speech...")
+                            await client.publish(channel, json.dumps({
+                                "event": "TURN_STARTED",
+                                "speaker": "human"
+                            }))
 
                 elif action == "POI_OFFERED":
                     # Human clicked "Offer POI" while the AI is speaking.
@@ -180,7 +196,7 @@ async def generate_ai_response(
         response = await debater.orchestrate_debater_response(
             transcript=transcript,
             speaker_role=speaker_role,
-            speaker_id=speaker_id,
+            channel=channel,
             personality_trait="balanced",
             session_id=match_id
         )
@@ -198,6 +214,28 @@ async def generate_ai_response(
         # Save updated state back to Redis
         await state_manager.update_state(state)
         print(f"State persisted to Redis for match {match_id}")
+
+        # VERY IMPORTANT: Tell React the AI is done, and it's the Human's turn!
+        # Re-fetch schedule to get the next speaker
+        next_speaker = None
+        if state.current_turn_index < len(state.schedule):
+            next_speaker = state.schedule[state.current_turn_index]
+            
+        if next_speaker:
+            # Handle both Pydantic objects and dicts when pulling from Redis state
+            player_type = next_speaker.get("player_type", "ai") if isinstance(next_speaker, dict) else getattr(next_speaker, 'player_type', "ai")
+            speaker_role = next_speaker.get("role", "Speaker") if isinstance(next_speaker, dict) else getattr(next_speaker, 'role', "Speaker")
+            
+            await client.publish(
+                channel,
+                json.dumps({
+                    "event": "TURN_STARTED",
+                    "speaker": "human" if player_type.lower() == "human" else "ai",
+                    "role": speaker_role,
+                    "text": None
+                })
+            )
+            print(f"Published TURN_STARTED ({player_type} - {speaker_role}) to React.")
 
         # Save turn to Supabase for permanent storage
         db = SessionLocal()

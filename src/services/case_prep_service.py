@@ -64,8 +64,21 @@ async def prepare_case(
         )
 
         # Step 2: Validate response structure
+        if hasattr(ai_response, "model_dump"):
+            ai_response = ai_response.model_dump()
+        elif hasattr(ai_response, "dict"):
+            ai_response = ai_response.dict()
+        elif isinstance(ai_response, str):
+            try:
+                cleaned = ai_response.strip("`")
+                if cleaned.startswith("json\n"):
+                    cleaned = cleaned[5:]
+                ai_response = json.loads(cleaned)
+            except Exception:
+                raise ValueError(f"AI response string is not valid JSON. Got: {ai_response[:100]}")
+                
         if not isinstance(ai_response, dict):
-            raise ValueError("AI agent response must be a dictionary")
+            raise ValueError(f"AI agent response must be a dictionary, got {type(ai_response)}")
 
         required_keys = {"model_definition", "arguments", "counter_arguments", "evidence"}
         missing_keys = required_keys - set(ai_response.keys())
