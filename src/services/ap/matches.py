@@ -4,37 +4,31 @@ Asian Parliamentary (AP) Match Service.
 Business logic layer for match operations.
 
 Responsibilities:
-- Orchestrate match creation workflow
-- Validate business rules
-- Handle match state transitions
-- Prepare data for API responses
-- Interact with repositories
+1. Create new match (single user initiating)
+2. Initialize Redis state (all 6 speakers scheduled)
+3. Generate case prep for the user
+4. Handle match lifecycle (status transitions)
+5. Persist to database via repository
 
-This service sits between API routes and repository.
-It enforces business logic without knowing about HTTP details.
+Simple, focused flow without complex team management.
 """
 
 import logging
 import json
-from typing import Optional, Tuple, List
+from typing import Optional, List
 from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from src.repositories.ap.matches import APMatchRepository
+from src.services.ap.case_prep import APCasePrepService
 from src.schemas.ap.matches import (
     CreateMatchRequest,
     MatchResponse,
-    MatchListResponse,
     MatchListItem,
     MatchStatus,
-    APRole,
-    DebateSide,
-    TeamInfo,
-    SpeakerInfo,
-    NextSpeaker,
 )
-from src.models.debate import Match
+from src.engine.state import state_manager
 
 logger = logging.getLogger(__name__)
 
@@ -43,19 +37,19 @@ class APMatchService:
     """
     Service layer for AP match operations.
     
-    Encapsulates business logic for:
-    - Creating matches with validation
-    - Listing and retrieving matches
-    - Managing match state transitions
-    - Building API responses
+    Orchestrates:
+    - Match creation with case prep generation
+    - Redis state initialization
+    - Match status transitions
     """
     
     def __init__(self):
-        """Initialize service with repository."""
+        """Initialize service with repository and dependencies."""
         self.repository = APMatchRepository()
+        self.case_prep_service = APCasePrepService()
     
-    # CREATE  
-      
+    # CREATE MATCH
+    
     async def create_match(
         self,
         db: Session,
@@ -63,44 +57,82 @@ class APMatchService:
         request: CreateMatchRequest
     ) -> MatchResponse:
         """
-        Create a new AP match with full validation.
+        Create a new AP match and initialize everything.
         
-        Business Rules:
-        1. User must provide all 6 speakers (3 per side)
-        2. Each side must have exactly one first_speaker, second_speaker, whip
-        3. All speakers must be different users
-        4. Match starts in PENDING status
+        Flow:
+        1. Create match record in database
+        2. Initialize Redis state (all 6 speakers scheduled)
+        3. Publish START_MATCH event to Redis PubSub
+        4. Generate case prep for this user
         
         Args:
             db (Session): Database session
-            user_id (str): UUID of user creating match
-            request (CreateMatchRequest): Match creation request
+            user_id (str): User creating the match
+            request (CreateMatchRequest): {motion, side, role}
         
         Returns:
-            MatchResponse: Created match details
+            MatchResponse: Created match with status AWAITING_PARTICIPANTS
         
         Raises:
-            ValueError: If business rules violated
+            ValueError: If validation fails
+            Exception: If any step fails
         """
         try:
-            # Validate no duplicate speakers
-            all_speakers = [s.user_id for s in request.government] + [s.user_id for s in request.opposition]
-            if len(all_speakers) != len(set(all_speakers)):
-                raise ValueError("All speakers must be unique users")
+            logger.info(f"Creating AP match for user {user_id}")
             
-            # Create in database
-            match_db = self.repository.create_match(db, user_id, request)
+            # STEP 1: Create match in database
+            match_db = self.repository.create_match(
+                db=db,
+                user_id=user_id,
+                motion=request.motion,
+                side=request.side,
+                role=request.role
+            )
+            db.commit()
+            db.refresh(match_db)
             
-            logger.info(f"Match service created match: {match_db.id}")
+            match_id = str(match_db.id)
+            logger.info(f"Match created: {match_id}")
             
-            # Convert to response
-            return self._build_match_response(match_db)
+            # STEP 2: Initialize Redis state (all 6 speakers scheduled)
+            await state_manager.initialize_match(
+                match_id=match_id,
+                human_side=request.side,
+                format_type="AP",
+                preferred_role=request.role
+            )
+            logger.info(f"Redis state initialized for match {match_id}")
+            
+            # STEP 3: Publish START_MATCH event to trigger Python consumer
+            import redis.asyncio as redis
+            from src.core.config import settings
+            
+            redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+            await redis_client.publish(
+                f"debate:{match_id}:events",
+                json.dumps({"action": "START_MATCH", "match_id": match_id})
+            )
+            logger.info(f"Published START_MATCH event for {match_id}")
+            
+            # STEP 4: Generate case prep for user
+            case_prep = await self.case_prep_service.generate_case_prep(
+                db=db,
+                user_id=user_id,
+                match_id=match_id,
+                request=request
+            )
+            logger.info(f"Case prep generated for user {user_id}")
+            
+            # Return response
+            return MatchResponse.model_validate(match_db)
             
         except ValueError as e:
-            logger.warning(f"Validation error creating match: {str(e)}")
+            logger.warning(f"Validation error: {str(e)}")
+            db.rollback()
             raise
         except Exception as e:
             logger.error(f"Failed to create match: {str(e)}")
+            db.rollback()
             raise
     
     # READ
@@ -111,7 +143,7 @@ class APMatchService:
         match_id: str
     ) -> Optional[MatchResponse]:
         """
-        Get match by ID with full details.
+        Get match details by ID.
         
         Args:
             db (Session): Database session
@@ -120,12 +152,18 @@ class APMatchService:
         Returns:
             Optional[MatchResponse]: Match if found, None otherwise
         """
-        match_db = self.repository.get_match_by_id(db, match_id)
-        if not match_db:
-            logger.info(f"Match not found: {match_id}")
-            return None
-        
-        return self._build_match_response(match_db)
+        try:
+            match_db = self.repository.get_match_by_id(db, match_id)
+            
+            if not match_db:
+                logger.info(f"Match not found: {match_id}")
+                return None
+            
+            return MatchResponse.model_validate(match_db)
+            
+        except Exception as e:
+            logger.error(f"Failed to get match: {str(e)}")
+            raise
     
     async def list_matches(
         self,
@@ -133,64 +171,46 @@ class APMatchService:
         user_id: str,
         status: Optional[str] = None,
         skip: int = 0,
-        limit: int = 10,
-        sort_by: str = "created_at",
-        order: str = "desc"
-    ) -> MatchListResponse:
+        limit: int = 10
+    ) -> List[MatchListItem]:
         """
-        Get paginated list of user's AP matches.
-        
-        Filtering & Sorting:
-        - Filter by status: pending, in_progress, completed, cancelled
-        - Sort by: created_at, started_at
-        - Order: asc, desc
+        List user's AP matches.
         
         Args:
             db (Session): Database session
             user_id (str): User UUID
-            status (Optional[str]): Status filter
+            status (Optional[str]): Filter by status
             skip (int): Pagination offset
             limit (int): Results per page
-            sort_by (str): Sort field
-            order (str): Sort order
         
         Returns:
-            MatchListResponse: Paginated matches
+            List[MatchListItem]: User's matches
         """
         try:
-            # Validate inputs
             if limit > 100:
                 limit = 100
             if skip < 0:
                 skip = 0
             
-            # Get from repository
-            matches_db, total = self.repository.get_matches_for_user(
-                db, user_id, status, skip, limit, sort_by, order
+            matches_db = self.repository.get_matches_for_user(
+                db, user_id, status, skip, limit
             )
             
-            # Convert to response items
             items = [
                 MatchListItem(
-                    id=m.id,
-                    title=m.title,
-                    status=m.status,
+                    id=str(m.id),
                     motion=m.motion[:100] + "..." if len(m.motion) > 100 else m.motion,
-                    speeches_completed=m.speeches_completed,
-                    government_side="Government",
-                    opposition_side="Opposition",
+                    status=m.status,
+                    your_role=m.role,
+                    your_side=m.side,
                     created_at=m.created_at,
-                    started_at=m.started_at
+                    started_at=m.started_at,
+                    ended_at=m.ended_at
                 )
                 for m in matches_db
             ]
             
-            return MatchListResponse(
-                matches=items,
-                total=total,
-                skip=skip,
-                limit=limit
-            )
+            return items
             
         except Exception as e:
             logger.error(f"Failed to list matches: {str(e)}")
@@ -202,57 +222,38 @@ class APMatchService:
         self,
         db: Session,
         match_id: str,
-        new_status: str,
-        reason: Optional[str] = None
+        new_status: str
     ) -> Optional[MatchResponse]:
         """
-        Update match status with state validation.
+        Update match status.
         
-        State Machine:
-        - pending  → in_progress (automatic on first speech)
-        - pending  → cancelled (manual)
-        - in_progress → completed (when judging submitted)
-        - in_progress → cancelled (manual)
-        - completed → (no transitions)
-        - cancelled → (terminal state)
+        Go Gateway orchestrates the flow and determines valid transitions.
         
         Args:
             db (Session): Database session
             match_id (str): Match UUID
             new_status (str): New status
-            reason (Optional[str]): Reason for change
         
         Returns:
             Optional[MatchResponse]: Updated match or None
-        
-        Raises:
-            ValueError: If transition not allowed
         """
         try:
-            # Get current match
             match_db = self.repository.get_match_by_id(db, match_id)
             if not match_db:
                 return None
             
-            # Validate state transition
-            old_status = match_db.status
-            if not self._is_valid_transition(old_status, new_status):
-                raise ValueError(f"Invalid status transition: {old_status} → {new_status}")
+            # Update status (Go Gateway orchestrates the flow)
+            match_db = self.repository.update_match_status(db, match_id, new_status)
+            db.commit()
+            db.refresh(match_db)
             
-            # Update in repository
-            match_db = self.repository.update_match_status(
-                db, match_id, new_status, reason
-            )
+            logger.info(f"Match status updated: {match_id} → {new_status}")
             
-            logger.info(f"Match status updated: {match_id} - {old_status} → {new_status}")
+            return MatchResponse.model_validate(match_db)
             
-            return self._build_match_response(match_db)
-            
-        except ValueError as e:
-            logger.warning(f"Status transition error: {str(e)}")
-            raise
         except Exception as e:
-            logger.error(f"Failed to update match status: {str(e)}")
+            logger.error(f"Failed to update status: {str(e)}")
+            db.rollback()
             raise
     
     # DELETE
@@ -260,212 +261,29 @@ class APMatchService:
     async def cancel_match(
         self,
         db: Session,
-        match_id: str,
-        reason: Optional[str] = None
+        match_id: str
     ) -> bool:
         """
-        Cancel a match.
-        
-        Allows cancellation at any stage:
-        - pending: Before debate starts
-        - in_progress: During debate
-        - cancellation is a terminal state
+        Cancel a match at any stage.
         
         Args:
             db (Session): Database session
             match_id (str): Match UUID
-            reason (Optional[str]): Cancellation reason
         
         Returns:
             bool: True if cancelled successfully
         """
         try:
-            success = self.repository.cancel_match(db, match_id, reason)
+            success = self.repository.cancel_match(db, match_id)
             
             if success:
+                db.commit()
                 logger.info(f"Match cancelled: {match_id}")
             
             return success
             
         except Exception as e:
             logger.error(f"Failed to cancel match: {str(e)}")
+            db.rollback()
             raise
-    
-    # HELPER METHODS - Response Building
-    
-    def _build_match_response(self, match_db: Match) -> MatchResponse:
-        """
-        Convert database match to API response format.
-        
-        Handles:
-        - Extracting team/speaker data from nested JSON
-        - Calculating next speaker
-        - Formatting timestamps
-        - Building all response sub-objects
-        
-        Args:
-            match_db (Match): Database match object
-        
-        Returns:
-            MatchResponse: Formatted API response
-        """
-        # Deserialize team data from JSON
-        government_data = json.loads(match_db.government_team) if match_db.government_team else {"speakers": []}
-        opposition_data = json.loads(match_db.opposition_team) if match_db.opposition_team else {"speakers": []}
-        config_data = json.loads(match_db.config) if match_db.config else {}
-        
-        # Build government team
-        government = TeamInfo(
-            team_id=f"gov_{str(match_db.id)[:8]}",
-            side=DebateSide.GOVERNMENT,
-            speakers=[
-                SpeakerInfo(
-                    user_id=s["user_id"],
-                    role=s["role"],  # Pydantic auto-converts string to APRole enum
-                    name=s.get("name", s["user_id"][:8]),
-                    spoke=s.get("spoke", False),
-                    speech_duration=s.get("speech_duration"),
-                    poi_made=s.get("poi_made"),
-                    poi_received=s.get("poi_received")
-                )
-                for s in government_data.get("speakers", [])
-            ]
-        )
-        
-        # Build opposition team
-        opposition = TeamInfo(
-            team_id=f"opp_{str(match_db.id)[:8]}",
-            side=DebateSide.OPPOSITION,
-            speakers=[
-                SpeakerInfo(
-                    user_id=s["user_id"],
-                    role=s["role"],  # Pydantic auto-converts string to APRole enum
-                    name=s.get("name", s["user_id"][:8]),
-                    spoke=s.get("spoke", False),
-                    speech_duration=s.get("speech_duration"),
-                    poi_made=s.get("poi_made"),
-                    poi_received=s.get("poi_received")
-                )
-                for s in opposition_data.get("speakers", [])
-            ]
-        )
-        
-        # Calculate next speaker
-        next_speaker = None
-        if match_db.current_speaker_index is not None and match_db.current_speaker_index < 5:
-            next_speaker = self._get_next_speaker(
-                match_db.current_speaker_index,
-                government,
-                opposition
-            )
-        
-        # Build response
-        return MatchResponse(
-            id=str(match_db.id),
-            title=match_db.title,
-            motion=match_db.motion,
-            format="asian_parliamentary",
-            status=match_db.status,
-            government=government,
-            opposition=opposition,
-            speeches_completed=match_db.speeches_completed or 0,
-            current_speaker_index=match_db.current_speaker_index,
-            next_speaker=next_speaker,
-            adjudicator_id=config_data.get("adjudicator_id"),
-            tournament_id=config_data.get("tournament_id"),
-            round_number=config_data.get("round_number"),
-            created_at=match_db.created_at,
-            created_by=str(match_db.created_by),
-            started_at=match_db.started_at,
-            ended_at=match_db.ended_at,
-            updated_at=match_db.updated_at
-        )
-    
-    def _get_next_speaker(
-        self,
-        current_index: int,
-        government: TeamInfo,
-        opposition: TeamInfo
-    ) -> Optional[NextSpeaker]:
-        """
-        Calculate next speaker based on AP speech order.
-        
-        AP Speech Order (alternating government/opposition):
-        0: Government First Speaker
-        1: Opposition First Speaker
-        2: Government Second Speaker
-        3: Opposition Second Speaker
-        4: Government Whip
-        5: Opposition Whip
-        
-        Args:
-            current_index (int): Current speech index (0-5)
-            government (TeamInfo): Government team
-            opposition (TeamInfo): Opposition team
-        
-        Returns:
-            Optional[NextSpeaker]: Next speaker info or None if at end
-        """
-        if current_index >= 5:
-            return None
-        
-        # AP speech order mapping
-        order = [
-            ("government", "first_speaker"),
-            ("opposition", "first_speaker"),
-            ("government", "second_speaker"),
-            ("opposition", "second_speaker"),
-            ("government", "whip"),
-            ("opposition", "whip"),
-        ]
-        
-        next_index = current_index + 1
-        side_str, role_str = order[next_index]
-        
-        # Get next speaker info
-        team = government if side_str == "government" else opposition
-        for speaker in team.speakers:
-            if speaker.role.value == role_str:
-                return NextSpeaker(
-                    role=speaker.role,
-                    side=team.side,
-                    user_id=speaker.user_id,
-                    order_position=next_index + 1  # 1-indexed for display
-                )
-        
-        return None
-    
-    # HELPER METHODS - Validation
-    
-    @staticmethod
-    def _is_valid_transition(old_status: str, new_status: str) -> bool:
-        """
-        Validate state transition rules.
-        
-        Allowed transitions:
-        - pending → in_progress, cancelled
-        - in_progress → completed, cancelled
-        - completed → (terminal)
-        - cancelled → (terminal)
-        
-        Args:
-            old_status (str): Current status
-            new_status (str): Desired status
-        
-        Returns:
-            bool: True if transition allowed
-        """
-        transitions = {
-            MatchStatus.PENDING.value: [
-                MatchStatus.IN_PROGRESS.value,
-                MatchStatus.CANCELLED.value
-            ],
-            MatchStatus.IN_PROGRESS.value: [
-                MatchStatus.COMPLETED.value,
-                MatchStatus.CANCELLED.value
-            ],
-            MatchStatus.COMPLETED.value: [],
-            MatchStatus.CANCELLED.value: [],
-        }
-        
-        return new_status in transitions.get(old_status, [])
+
