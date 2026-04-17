@@ -28,3 +28,4 @@ class User(Base):
     case_preps = relationship("CasePrep", back_populates="user")
     debate_sessions = relationship("DebateSession", back_populates="user")
     performances = relationship("UserPerformance", back_populates="user")
+    matches = relationship("Match", back_populates="creator", foreign_keys="Match.created_by")
