@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from src.models.user import User
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -44,7 +44,7 @@ class TestAuthEndpoints:
             email="existing@example.com",
             display_name="Existing User",
             skill_level="Beginner",
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         db.add(user)
         db.commit()
@@ -71,7 +71,7 @@ class TestAuthEndpoints:
             email="user@example.com",
             display_name="Test User",
             skill_level="Beginner",
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         db.add(user)
         db.commit()
@@ -209,7 +209,7 @@ def auth_token(client: TestClient, db: Session) -> str:
         email="testuser@example.com",
         display_name="Test User",
         skill_level="Beginner",
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     db.add(user)
     db.commit()

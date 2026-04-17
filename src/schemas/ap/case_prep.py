@@ -4,6 +4,7 @@ Asian Parliamentary (AP) Case Prep Schemas.
 Simple 2-schema pattern:
 1. GenerateCasePrepRequest - Client sends motion + side + role
 2. CasePrepResponse - Server returns resource info + role-specific prep
+3. AIPrepResult - AI agent's structured output for case prep
 
 Speaker Roles (AP Format):
 - Prime Minister (PM): Characterises and establishes ideas, stakeholders, narratives
@@ -77,6 +78,40 @@ class CasePrepResponse(BaseModel):
     arguments: List[Argument] = Field(description="Main arguments to make (3-5 per role)")
     counter_arguments: List[str] = Field(description="Anticipated opposing arguments")
     evidence: List[str] = Field(description="Supporting facts, statistics, examples")
+    
+    class Config:
+        from_attributes = True
+
+
+# AI AGENT OUTPUT
+class AIPrepResult(BaseModel):
+    """
+    AI Agent Output Schema - Result from Prep Coach agent.
+    
+    This is the structured output from the prep_coach AI agent.
+    Used by LangChain's with_structured_output() for response parsing.
+    Returned to service layer for validation and persistence.
+    """
+    model_definition: str = Field(
+        description="Case theory - framework for interpreting motion",
+        min_length=20,
+        max_length=2000
+    )
+    arguments: List[Argument] = Field(
+        description="Main arguments to make (3-5 per role)",
+        min_items=1,
+        max_items=10
+    )
+    counter_arguments: List[str] = Field(
+        description="Anticipated opposing arguments",
+        default_factory=list,
+        max_items=10
+    )
+    evidence: List[str] = Field(
+        description="Supporting facts, statistics, examples",
+        default_factory=list,
+        max_items=20
+    )
     
     class Config:
         from_attributes = True

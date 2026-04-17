@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from src.core.database import get_db
 from src.api.dependencies import get_current_user
 from src.schemas.auth import CurrentUserData
+from src.schemas.common import APIResponse, APIStatusCode
 from src.schemas.ap.case_prep import (
     GenerateCasePrepRequest,
     CasePrepResponse,
@@ -29,7 +30,7 @@ case_prep_service = APCasePrepService()
 # POST /api/v1/ap/matches/{match_id}/case-prep - Generate Case Prep
 @router.post(
     "",
-    response_model=CasePrepResponse,
+    response_model=APIResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Generate role-specific case prep"
 )
@@ -38,7 +39,7 @@ async def generate_case_prep(
     request: GenerateCasePrepRequest,
     user: CurrentUserData = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> CasePrepResponse:
+):
     """Generate case prep for user's specific role in match."""
     try:
         logger.info(f"Generating case prep for user {user.user_id} in match {match_id}")
@@ -51,7 +52,11 @@ async def generate_case_prep(
         )
         
         logger.info(f"Case prep generated: {case_prep.id}")
-        return case_prep
+        return APIResponse(
+            status=APIStatusCode.SUCCESS,
+            message="Case prep generated successfully",
+            data=case_prep
+        )
     
     except ValueError as e:
         logger.warning(f"Validation error: {str(e)}")
@@ -60,20 +65,18 @@ async def generate_case_prep(
         logger.error(f"Failed to generate case prep: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to generate case prep")
 
-# ============================================================================
 # GET /api/v1/ap/matches/{match_id}/case-prep - Get Case Prep
-# ============================================================================
 
 @router.get(
     "",
-    response_model=CasePrepResponse,
+    response_model=APIResponse,
     summary="Get case prep for user's role in match"
 )
 async def get_case_prep(
     match_id: str,
     user: CurrentUserData = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> CasePrepResponse:
+):
     """Get existing case prep for user's role in match."""
     try:
         logger.info(f"Retrieving case prep for user {user.user_id} in match {match_id}")
@@ -91,7 +94,11 @@ async def get_case_prep(
                 detail="Case prep not found. Generate one first using POST."
             )
         
-        return case_prep
+        return APIResponse(
+            status=APIStatusCode.SUCCESS,
+            message="Case prep retrieved successfully",
+            data=case_prep
+        )
     
     except HTTPException:
         raise

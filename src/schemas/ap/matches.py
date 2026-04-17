@@ -56,6 +56,7 @@ class CreateMatchRequest(BaseModel):
 class UpdateMatchStatusRequest(BaseModel):
     """Update match status."""
     status: MatchStatus = Field(..., description="New status")
+    reason: Optional[str] = Field(None, description="Reason for status change")
 
 
 
@@ -104,3 +105,7 @@ class MatchListResponse(BaseModel):
     total: int = Field(..., description="Total matches")
     skip: int = Field(..., description="Pagination offset")
     limit: int = Field(..., description="Page size")
+
+
+# TYPE ALIAS FOR SERVICE RETURNS
+MatchListResponseDict = dict  # {"matches": [...], "total": int, "skip": int, "limit": int}

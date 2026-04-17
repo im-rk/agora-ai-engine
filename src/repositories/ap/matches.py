@@ -1,39 +1,32 @@
 """
 Asian Parliamentary (AP) Match Repository.
 
-Database layer for match persistence and queries.
+Database layer for AP match persistence using DebateSession model.
 
 Responsibilities:
-- Create new AP matches
+- Create new AP matches (DebateSession + Motion + CasePrep)
 - Retrieve matches by ID
 - List matches with filtering
 - Update match status
-- Delete/cancel matches
-- Query helper methods
+- Cancel/delete matches
 
-Database Model: Match (generic, but used here for AP format)
-Columns: id, user_id, format, title, motion, status, government_team, opposition_team,
-         speeches_completed, current_speaker_index, config, created_at, started_at,
-         ended_at, updated_at
-
-Note: AP-specific data (roles, speakers) are stored in nested JSON in config/metadata.
+Maps AP schemas to actual database models:
+- Motion: Debate topic (shared with old system)
+- CasePrep: User's prepared case for a side
+- DebateSession: THE match record (format=AP)
 """
 
 import logging
-import json
+import uuid
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc
+from sqlalchemy import desc
 
-from src.models.debate import Match
-from src.schemas.ap.matches import (
-    CreateMatchRequest,
-    MatchResponse,
-    MatchListItem,
-    MatchStatus,
-)
+from src.models.debate import DebateSession, MatchFormat, MatchStatus, Turn
+from src.models.setup import Motion, MotionCategory, CasePrep
+from src.models.user import SkillLevel
 
 logger = logging.getLogger(__name__)
 
@@ -42,119 +35,107 @@ class APMatchRepository:
     """
     Repository for Asian Parliamentary match database operations.
     
-    Handles all CRUD operations for AP matches with format-specific logic.
+    Uses DebateSession as the primary match model (same as old system).
+    Creates Motion and CasePrep records as needed.
     """
     
-    # ========================================================================
     # CREATE
-    # ========================================================================
     
     @staticmethod
     def create_match(
         db: Session,
         user_id: str,
-        request: CreateMatchRequest
-    ) -> Match:
+        motion: str,
+        side: str,
+        role: str,
+        skill_level: str = "BEGINNER"
+    ) -> DebateSession:
         """
-        Create a new AP match in database.
+        Create a new AP match.
         
         Flow:
-        1. Validate request (already done by Pydantic)
-        2. Create Match record with PENDING status
-        3. Store government/opposition teams and speakers
-        4. Store optional config (tournament, judge, round)
+        1. Create Motion record (debate topic)
+        2. Create CasePrep record (user's prepared case)
+        3. Create DebateSession record (the match)
         
         Args:
             db (Session): Database session
             user_id (str): UUID of user creating match
-            request (CreateMatchRequest): Match creation details
+            motion (str): Debate motion text (e.g., "This house believes...")
+            side (str): "government" or "opposition"
+            role (str): AP role (e.g., "prime_minister")
+            skill_level (str): User's skill level (BEGINNER, INTERMEDIATE, ADVANCED)
         
         Returns:
-            Match: Created match object with ID
+            DebateSession: Created debate session (the match)
         
         Raises:
-            SQLAlchemyError: If database operation fails
-        
-        Side Effects:
-            - Creates new Match record in database
-            - Initializes speeches_completed to 0
-            - Sets status to "pending"
+            ValueError: If validation fails
+            Exception: If database operation fails
         """
         try:
-            # Build government team data
-            government_team = {
-                "side": "government",
-                "speakers": [
-                    {
-                        "user_id": speaker.user_id,
-                        "role": speaker.role.value,
-                        "spoke": False,
-                        "speech_duration": None,
-                        "poi_made": None,
-                        "poi_received": None
-                    }
-                    for speaker in request.government
-                ]
-            }
+            # Convert side to title case for database
+            side_db = "Government" if side.lower() == "government" else "Opposition"
             
-            # Build opposition team data
-            opposition_team = {
-                "side": "opposition",
-                "speakers": [
-                    {
-                        "user_id": speaker.user_id,
-                        "role": speaker.role.value,
-                        "spoke": False,
-                        "speech_duration": None,
-                        "poi_made": None,
-                        "poi_received": None
-                    }
-                    for speaker in request.opposition
-                ]
-            }
-            
-            # Store config (tournament, judge, round)
-            config = {
-                "format": "asian_parliamentary",
-                "adjudicator_id": request.config.adjudicator_id if request.config else None,
-                "tournament_id": request.config.tournament_id if request.config else None,
-                "round_number": request.config.round_number if request.config else None,
-            }
-            
-            # Create match record
-            match = Match(
-                created_by=user_id,
-                format="ap",
-                title=request.title,
-                motion=request.motion,
-                status="pending",
-                government_team=json.dumps(government_team),
-                opposition_team=json.dumps(opposition_team),
-                speeches_completed=0,
-                current_speaker_index=None,
-                config=json.dumps(config),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+            # STEP 1: Create Motion record
+            motion_obj = Motion(
+                id=uuid.uuid4(),
+                motion_text=motion,
+                category=MotionCategory.CUSTOM,
+                is_custom=True
             )
+            db.add(motion_obj)
+            db.flush()  # Get ID before next step
             
-            db.add(match)
+            logger.info(f"Motion created: {motion_obj.id}")
+            
+            # STEP 2: Create CasePrep record
+            case_prep_obj = CasePrep(
+                id=uuid.uuid4(),
+                user_id=UUID(user_id),
+                motion_id=motion_obj.id,
+                side=side_db,
+                # Will be populated by case_prep_service
+                arguments=None,
+                counter_arguments=None,
+                evidence=None
+            )
+            db.add(case_prep_obj)
+            db.flush()
+            
+            logger.info(f"CasePrep created: {case_prep_obj.id}")
+            
+            # STEP 3: Create DebateSession record (the match)
+            skill_enum = SkillLevel[skill_level.upper()] if skill_level else SkillLevel.BEGINNER
+            
+            debate_session = DebateSession(
+                id=uuid.uuid4(),
+                user_id=UUID(user_id),
+                motion_id=motion_obj.id,
+                case_prep_id=case_prep_obj.id,
+                format=MatchFormat.ASIAN_PARLIAMENTARY,
+                human_role=role,
+                skill_level=skill_enum,
+                status=MatchStatus.STARTED,
+                poi_enabled=True,
+                started_at=datetime.now(timezone.utcezone.utc)
+            )
+            db.add(debate_session)
             db.commit()
-            db.refresh(match)
+            db.refresh(debate_session)
             
-            logger.info(f"AP match created: {match.id} by user {user_id}")
-            return match
+            logger.info(f"AP Match created: {debate_session.id} for user {user_id}")
+            return debate_session
             
         except Exception as e:
             db.rollback()
             logger.error(f"Failed to create AP match: {str(e)}")
             raise
     
-    # ========================================================================
     # READ
-    # ========================================================================
     
     @staticmethod
-    def get_match_by_id(db: Session, match_id: str) -> Optional[Match]:
+    def get_match_by_id(db: Session, match_id: str) -> Optional[DebateSession]:
         """
         Get match by ID.
         
@@ -163,105 +144,82 @@ class APMatchRepository:
             match_id (str): Match UUID
         
         Returns:
-            Optional[Match]: Match if found, None otherwise
+            Optional[DebateSession]: Match if found, None otherwise
         """
-        return db.query(Match).filter(
-            Match.id == match_id,
-            Match.format == "asian_parliamentary"
-        ).first()
+        try:
+            return db.query(DebateSession).filter(
+                DebateSession.id == UUID(match_id),
+                DebateSession.format == MatchFormat.ASIAN_PARLIAMENTARY
+            ).first()
+        except Exception as e:
+            logger.error(f"Failed to get match {match_id}: {str(e)}")
+            raise
     
     @staticmethod
     def get_matches_for_user(
         db: Session,
         user_id: str,
-        status: Optional[str] = None,
+        status_filter: Optional[str] = None,
         skip: int = 0,
-        limit: int = 10,
-        sort_by: str = "created_at",
-        order: str = "desc"
-    ) -> tuple[List[Match], int]:
+        limit: int = 10
+    ) -> List[DebateSession]:
         """
-        Get paginated list of user's AP matches with optional filtering.
-        
-        Query Strategy:
-        - Filter by user_id (creator or participant)
-        - Filter by format (AP only)
-        - Filter by status if provided
-        - Sort and paginate results
+        Get paginated list of user's AP matches.
         
         Args:
             db (Session): Database session
             user_id (str): User UUID
-            status (Optional[str]): Filter by status (pending/in_progress/completed/cancelled)
+            status_filter (Optional[str]): Filter by status
             skip (int): Pagination offset
             limit (int): Results per page
-            sort_by (str): Sort field (created_at, started_at)
-            order (str): Sort order (asc, desc)
         
         Returns:
-            tuple[List[Match], int]: (matches, total_count)
+            List[DebateSession]: User's AP matches
         """
-        # Base query - matches for user in AP format
-        query = db.query(Match).filter(
-            Match.format == "asian_parliamentary",
-            or_(
-                Match.created_by == user_id,
-                # Could also check if user is in participants (if needed)
+        try:
+            query = db.query(DebateSession).filter(
+                DebateSession.user_id == UUID(user_id),
+                DebateSession.format == MatchFormat.ASIAN_PARLIAMENTARY
             )
-        )
-        
-        # Filter by status if provided
-        if status:
-            query = query.filter(Match.status == status)
-        
-        # Get total count before pagination
-        total = query.count()
-        
-        # Apply sorting
-        sort_field = getattr(Match, sort_by, Match.created_at)
-        if order == "asc":
-            query = query.order_by(sort_field)
-        else:
-            query = query.order_by(desc(sort_field))
-        
-        # Apply pagination
-        matches = query.offset(skip).limit(limit).all()
-        
-        logger.info(f"Retrieved {len(matches)} AP matches for user {user_id}")
-        return matches, total
+            
+            if status_filter:
+                # Map status_filter to MatchStatus enum
+                status_enum = MatchStatus[status_filter.upper()]
+                query = query.filter(DebateSession.status == status_enum)
+            
+            # Sort by creation date descending
+            query = query.order_by(desc(DebateSession.started_at))
+            
+            # Paginate
+            matches = query.offset(skip).limit(limit).all()
+            
+            logger.info(f"Retrieved {len(matches)} AP matches for user {user_id}")
+            return matches
+            
+        except Exception as e:
+            logger.error(f"Failed to list matches for user {user_id}: {str(e)}")
+            raise
     
-    # ========================================================================
     # UPDATE
-    # ========================================================================
     
     @staticmethod
     def update_match_status(
         db: Session,
         match_id: str,
-        new_status: str,
-        reason: Optional[str] = None
-    ) -> Optional[Match]:
+        new_status: str
+    ) -> Optional[DebateSession]:
         """
-        Update match status with validation.
+        Update match status.
         
-        Allowed transitions:
-        - pending → in_progress (first speech recorded)
-        - in_progress → completed (judging submitted)
-        - any → cancelled (at any time)
+        Valid statuses: STARTED, FINISHED, ABORTED
         
         Args:
             db (Session): Database session
             match_id (str): Match UUID
-            new_status (str): New status value
-            reason (Optional[str]): Reason for status change
+            new_status (str): New status (e.g., "finished", "aborted")
         
         Returns:
-            Optional[Match]: Updated match if successful, None otherwise
-        
-        Side Effects:
-            - Updates match status
-            - Sets started_at if transitioning to in_progress
-            - Sets ended_at if transitioning to completed/cancelled
+            Optional[DebateSession]: Updated match or None
         """
         try:
             match = APMatchRepository.get_match_by_id(db, match_id)
@@ -269,20 +227,19 @@ class APMatchRepository:
                 logger.warning(f"Match not found: {match_id}")
                 return None
             
+            # Convert string to MatchStatus enum
+            status_enum = MatchStatus[new_status.upper()]
             old_status = match.status
-            match.status = new_status
-            match.updated_at = datetime.utcnow()
+            match.status = status_enum
             
-            # Set timestamps based on transition
-            if new_status == MatchStatus.IN_PROGRESS.value and not match.started_at:
-                match.started_at = datetime.utcnow()
-            elif new_status in [MatchStatus.COMPLETED.value, MatchStatus.CANCELLED.value]:
-                match.ended_at = datetime.utcnow()
+            # Set end time if match is finishing
+            if new_status.upper() in ["FINISHED", "ABORTED"]:
+                match.ended_at = datetime.now(timezone.utcezone.utc)
             
             db.commit()
             db.refresh(match)
             
-            logger.info(f"Match {match_id} status: {old_status} → {new_status}")
+            logger.info(f"Match {match_id} status: {old_status.value} → {new_status}")
             return match
             
         except Exception as e:
@@ -290,70 +247,22 @@ class APMatchRepository:
             logger.error(f"Failed to update match status: {str(e)}")
             raise
     
-    @staticmethod
-    def update_speeches_count(
-        db: Session,
-        match_id: str,
-        new_count: int,
-        current_speaker_index: Optional[int] = None
-    ) -> Optional[Match]:
-        """
-        Update speeches completed count.
-        
-        Called when a speech is recorded to track debate progression.
-        
-        Args:
-            db (Session): Database session
-            match_id (str): Match UUID
-            new_count (int): New speeches completed count (0-6)
-            current_speaker_index (Optional[int]): Index of current speaker (0-5)
-        
-        Returns:
-            Optional[Match]: Updated match
-        """
-        try:
-            match = APMatchRepository.get_match_by_id(db, match_id)
-            if not match:
-                return None
-            
-            match.speeches_completed = new_count
-            if current_speaker_index is not None:
-                match.current_speaker_index = current_speaker_index
-            match.updated_at = datetime.utcnow()
-            
-            db.commit()
-            db.refresh(match)
-            
-            return match
-            
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Failed to update speeches count: {str(e)}")
-            raise
-    
-    # ========================================================================
     # DELETE
-    # ========================================================================
     
     @staticmethod
     def cancel_match(
         db: Session,
-        match_id: str,
-        reason: Optional[str] = None
+        match_id: str
     ) -> bool:
         """
-        Cancel/delete a match.
-        
-        Soft delete: sets status to "cancelled" instead of removing.
-        This preserves match history in database.
+        Cancel a match (soft delete - sets status to ABORTED).
         
         Args:
             db (Session): Database session
             match_id (str): Match UUID
-            reason (Optional[str]): Cancellation reason
         
         Returns:
-            bool: True if cancelled successfully, False otherwise
+            bool: True if cancelled successfully
         """
         try:
             match = APMatchRepository.get_match_by_id(db, match_id)
@@ -361,19 +270,11 @@ class APMatchRepository:
                 logger.warning(f"Match not found for cancellation: {match_id}")
                 return False
             
-            match.status = MatchStatus.CANCELLED.value
-            match.ended_at = datetime.utcnow()
-            match.updated_at = datetime.utcnow()
-            
-            # Store cancellation reason if provided
-            if reason:
-                if not match.config:
-                    match.config = {}
-                match.config["cancellation_reason"] = reason
-            
+            match.status = MatchStatus.ABORTED
+            match.ended_at = datetime.now(timezone.utcezone.utc)
             db.commit()
             
-            logger.info(f"Match cancelled: {match_id} - Reason: {reason or 'Not specified'}")
+            logger.info(f"Match cancelled: {match_id}")
             return True
             
         except Exception as e:
@@ -381,63 +282,123 @@ class APMatchRepository:
             logger.error(f"Failed to cancel match: {str(e)}")
             raise
     
-    # ========================================================================
     # QUERY HELPERS
-    # ========================================================================
     
     @staticmethod
-    def get_match_by_speaker(
-        db: Session,
-        user_id: str,
-        status: Optional[str] = None
-    ) -> List[Match]:
+    def get_ongoing_matches(db: Session, user_id: str) -> List[DebateSession]:
         """
-        Get all AP matches where user is a participant/speaker.
-        
-        This is a convenience method to find all matches a user participated in.
+        Get user's ongoing (STARTED) AP matches.
         
         Args:
             db (Session): Database session
             user_id (str): User UUID
-            status (Optional[str]): Optional status filter
         
         Returns:
-            List[Match]: Matches where user is a speaker
+            List[DebateSession]: Ongoing matches
         """
-        # Query for matches where user appears in speakers
-        query = db.query(Match).filter(
-            Match.format == "asian_parliamentary",
-            Match.government_team.contains(user_id) | Match.opposition_team.contains(user_id)
-        )
-        
-        if status:
-            query = query.filter(Match.status == status)
-        
-        return query.all()
+        try:
+            return db.query(DebateSession).filter(
+                DebateSession.user_id == UUID(user_id),
+                DebateSession.format == MatchFormat.ASIAN_PARLIAMENTARY,
+                DebateSession.status == MatchStatus.STARTED
+            ).order_by(desc(DebateSession.started_at)).all()
+        except Exception as e:
+            logger.error(f"Failed to get ongoing matches: {str(e)}")
+            raise
     
     @staticmethod
-    def get_completed_matches(
-        db: Session,
-        skip: int = 0,
-        limit: int = 10
-    ) -> tuple[List[Match], int]:
+    def get_match_with_motion(db: Session, match_id: str):
         """
-        Get all completed AP matches (for statistics, leaderboards, etc.).
+        Get match with its associated motion.
         
         Args:
             db (Session): Database session
-            skip (int): Pagination offset
-            limit (int): Results per page
+            match_id (str): Match UUID
         
         Returns:
-            tuple[List[Match], int]: (completed_matches, total_count)
+            Optional[Tuple]: (DebateSession, Motion) if found
         """
-        query = db.query(Match).filter(
-            Match.format == "asian_parliamentary",
-            Match.status == MatchStatus.COMPLETED.value
-        ).order_by(desc(Match.ended_at))
+        try:
+            match = db.query(DebateSession).filter(
+                DebateSession.id == UUID(match_id),
+                DebateSession.format == MatchFormat.ASIAN_PARLIAMENTARY
+            ).first()
+            
+            if not match:
+                return None
+            
+            motion = db.query(Motion).filter(Motion.id == match.motion_id).first()
+            return (match, motion)
+            
+        except Exception as e:
+            logger.error(f"Failed to get match with motion: {str(e)}")
+            raise
+    
+    # TURNS
+    
+    @staticmethod
+    def create_turn(
+        db: Session,
+        session_id: str,
+        turn_number: int,
+        speaker_role: str,
+        speaker_type: str,
+        transcript_text: str,
+        duration_seconds: int = 0
+    ) -> Turn:
+        """
+        Create a new turn record for an AP debate.
         
-        total = query.count()
-        matches = query.offset(skip).limit(limit).all()
+        Called after AI agent generates a response during live debate.
+        Stores the turn transcript in the database for later retrieval and analysis.
         
-        return matches, total
+        Args:
+            db (Session): Database session
+            session_id (str): UUID of DebateSession (match)
+            turn_number (int): Sequential turn number (0-indexed)
+            speaker_role (str): Speaker role (e.g., "Prime Minister")
+            speaker_type (str): "Human" or "AI"
+            transcript_text (str): Full speech/response text
+            duration_seconds (int): Duration of turn in seconds (optional)
+        
+        Returns:
+            Turn: Created turn record
+        
+        Raises:
+            ValueError: If session not found or invalid
+            Exception: If database operation fails
+        """
+        try:
+            # Verify session exists (optional - for validation)
+            session = db.query(DebateSession).filter(
+                DebateSession.id == UUID(session_id),
+                DebateSession.format == MatchFormat.ASIAN_PARLIAMENTARY
+            ).first()
+            
+            if not session:
+                logger.warning(f"AP Session not found for turn creation: {session_id}")
+                # Still create the turn - may be called before session verification
+            
+            # Create turn record
+            turn = Turn(
+                id=uuid.uuid4(),
+                session_id=UUID(session_id),
+                turn_number=turn_number,
+                speaker_role=speaker_role,
+                speaker_type=speaker_type,
+                transcript_text=transcript_text,
+                duration_seconds=duration_seconds,
+                started_at=datetime.now(timezone.utcezone.utc)
+            )
+            
+            db.add(turn)
+            db.commit()
+            db.refresh(turn)
+            
+            logger.info(f"Turn created: {turn.id} (turn #{turn_number}, speaker: {speaker_role}, type: {speaker_type})")
+            return turn
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to create turn for session {session_id}: {str(e)}")
+            raise

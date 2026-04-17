@@ -19,7 +19,7 @@ Note: AP-specific data stored as JSON/JSONB for flexibility.
 
 import logging
 from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -194,7 +194,7 @@ class APCasePrepRepository:
             case_prep.evidence = evidence
             case_prep.role_brief = role_brief or {}
             case_prep.tips = tips or []
-            case_prep.updated_at = datetime.utcnow()
+            case_prep.updated_at = datetime.now(timezone.utcezone.utc)
             
             db.add(case_prep)
             db.commit()

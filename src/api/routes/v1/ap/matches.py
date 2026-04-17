@@ -35,10 +35,7 @@ router = APIRouter()
 match_service = APMatchService()
 
 
-# ============================================================================
 # POST /api/v1/ap/matches - Create New Match
-# ============================================================================
-
 @router.post(
     "",
     response_model=APIResponse[MatchResponse],
@@ -54,57 +51,60 @@ async def create_match(
     Create a new Asian Parliamentary debate match.
     
     Business Logic:
-    1. Validate all 6 speakers provided (3 government, 3 opposition)
-    2. Ensure each side has one first_speaker, second_speaker, and whip
-    3. Create match in PENDING state
-    4. Return match details with speakers and configuration
+    1. Create Motion record (debate topic)
+    2. Create CasePrep record (user's prepared case)
+    3. Create DebateSession record (the match)
+    4. Initialize Redis state
+    5. Generate AI case prep
     
     Authentication: Required (JWT token)
     
     Args:
         request (CreateMatchRequest): 
-            - title: Match title
-            - motion: Debate motion/resolution
-            - government: List of 3 government speakers (with roles)
-            - opposition: List of 3 opposition speakers (with roles)
-            - config: Optional tournament/judge details
+            - motion: Debate motion text (10-500 chars)
+            - side: "government" or "opposition"
+            - role: AP role (prime_minister, etc.)
         
         user (CurrentUserData): Authenticated user creating the match
         db (Session): Database session
     
     Returns:
-        APIResponse[MatchResponse]: Created match with all details
+        APIResponse[MatchResponse]: Created match
     
     Raises:
-        HTTPException(400): Validation error (e.g., wrong number of speakers)
         HTTPException(401): Unauthorized
         HTTPException(500): Server error
+    
+    Example Request:
+    {
+        "motion": "This house believes AI development should be regulated",
+        "side": "government",
+        "role": "prime_minister"
+    }
     
     Example Response:
     {
         "status": "success",
         "message": "Match created successfully",
         "data": {
-            "id": "match_uuid",
-            "title": "Resolving Technology Impact",
-            "motion": "This house believes AI should be regulated",
-            "format": "asian_parliamentary",
-            "status": "pending",
-            "government": { ... },
-            "opposition": { ... },
-            "speeches_completed": 0,
+            "match_id": "match_uuid",
+            "motion": "This house believes...",
+            "status": "debate_in_progress",
+            "created_by": "user_uuid",
+            "your_role": "prime_minister",
+            "your_side": "government",
             "created_at": "2026-04-17T10:00:00Z",
-            ...
+            "participants": []
         }
     }
     """
     try:
-        logger.info(f"Creating AP match: {request.title[:50]} by user {user.user_id}")
+        logger.info(f"Creating AP match for user {user.user_id}: {request.motion[:50]}...")
         
         # Create match via service
         match = await match_service.create_match(db, user.user_id, request)
         
-        logger.info(f"Match created: {match.id}")
+        logger.info(f"Match created: {match.match_id}")
         
         return APIResponse(
             status=APIStatusCode.SUCCESS,
@@ -126,9 +126,7 @@ async def create_match(
         )
 
 
-# ============================================================================
 # GET /api/v1/ap/matches - List Matches
-# ============================================================================
 
 @router.get(
     "",
@@ -211,8 +209,13 @@ async def list_matches(
         
         return APIResponse(
             status=APIStatusCode.SUCCESS,
-            message=f"Found {len(matches.matches)} matches",
-            data=matches
+            message=f"Found {matches['total']} total matches, showing {len(matches['matches'])} results",
+            data={
+                "matches": matches["matches"],
+                "total": matches["total"],
+                "skip": matches["skip"],
+                "limit": matches["limit"]
+            }
         )
     
     except Exception as e:
@@ -223,9 +226,7 @@ async def list_matches(
         )
 
 
-# ============================================================================
 # GET /api/v1/ap/matches/{id} - Get Match Details
-# ============================================================================
 
 @router.get(
     "/{match_id}",
@@ -309,9 +310,7 @@ async def get_match(
         )
 
 
-# ============================================================================
 # PATCH /api/v1/ap/matches/{id} - Update Match Status
-# ============================================================================
 
 @router.patch(
     "/{match_id}",
@@ -406,9 +405,7 @@ async def update_match_status(
         )
 
 
-# ============================================================================
 # DELETE /api/v1/ap/matches/{id} - Cancel Match
-# ============================================================================
 
 @router.delete(
     "/{match_id}",

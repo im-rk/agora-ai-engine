@@ -10,7 +10,7 @@ Includes:
 from enum import Enum
 from typing import Generic, TypeVar, Optional
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 T = TypeVar('T')
 
@@ -49,7 +49,7 @@ class APIResponse(BaseModel, Generic[T]):
     def __init__(self, **data):
         super().__init__(**data)
         if not self.timestamp:
-            self.timestamp = datetime.utcnow().isoformat()
+            self.timestamp = datetime.now(timezone.utcezone.utc).isoformat()
 
 
 class DebateFormatEnum(str, Enum):

@@ -5,7 +5,7 @@ This module is isolated from database and HTTP layers.
 Contains only the core async function to generate case prep.
 """
 
-from src.schemas.prep_coach_schema import AIPrepResult
+from src.schemas.ap.case_prep import AIPrepResult
 
 
 async def generate_case_prep(
