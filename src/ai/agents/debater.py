@@ -39,7 +39,7 @@ from src.ai.prompts.debater_prompts import (
 from src.core.redis_client import get_redis_async
 from src.core.config import settings
 from src.core.database import SessionLocal
-from src.repositories.debate_repo import log_ai_call
+from src.repositories.ap.matches import log_ai_call
 
 
 class DebaterAgent:

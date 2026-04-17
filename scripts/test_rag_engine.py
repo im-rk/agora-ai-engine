@@ -1,10 +1,11 @@
 """
 Sandbox Test: RAG Engine
-Purpose: Test pgvector retrieval and evidence ranking
+Purpose: Test pgvector retrieval and evidence ranking for AP debate
 """
 
 import asyncio
 from src.ai.tools.rag_engine import RAGEngine
+from src.schemas.ap.matches import APRole, DebateSide
 
 
 async def test_rag_engine():
@@ -14,9 +15,9 @@ async def test_rag_engine():
     try:
         rag = RAGEngine()
         
-        # Test 1: Retrieve counter-arguments
-        print("\n[Test 1] Retrieving counter-arguments...")
-        query = "free trade benefits economy"
+        # Test 1: Retrieve counter-arguments for AP debate motion
+        print("\n[Test 1] Retrieving counter-arguments for AP motion...")
+        query = "free trade agreements international commerce"
         results = await rag.aretrieve_counter_arguments(topic=query, k=3)
         
         print(f"[PASS] Retrieved {len(results)} results for: '{query}'")
@@ -27,9 +28,9 @@ async def test_rag_engine():
         else:
             print(f"   [WARN] No results found (may be empty database)")
         
-        # Test 2: Retrieve counter-arguments (different query)
-        print("\n[Test 2] Retrieving counter-arguments (different query)...")
-        query2 = "government regulation needed"
+        # Test 2: Retrieve counter-arguments (different AP motion)
+        print("\n[Test 2] Retrieving counter-arguments (different AP motion)...")
+        query2 = "technology innovation society development"
         results2 = await rag.aretrieve_counter_arguments(topic=query2, k=3)
         
         print(f"[PASS] Retrieved {len(results2)} results for: '{query2}'")

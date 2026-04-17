@@ -1,4 +1,30 @@
-# Sandbox Testing Scripts
+# Agora AI Scripts
+
+Comprehensive testing and validation scripts for the Agora AI debate engine.
+
+## 📋 Script Categories
+
+### 1. AP Architecture Validation Scripts
+Validate the Asian Parliamentary (AP) debate engine implementation:
+
+```bash
+# Run all AP validations
+python -m scripts.run_all_validations
+
+# Or run individual validations
+python -m scripts.validate_architecture
+python -m scripts.validate_services
+python -m scripts.validate_schemas
+python -m scripts.validate_routes
+python -m scripts.validate_ap_flow
+python -m scripts.validate_imports
+```
+
+See [VALIDATION_GUIDE.md](VALIDATION_GUIDE.md) for complete details.
+
+---
+
+### 2. Sandbox Testing Scripts
 
 Comprehensive integration testing for all components of the Agora AI debate engine. These scripts test individual components and the full pipeline without mocks, using real connections to Upstash Redis, Supabase PostgreSQL, and Groq API.
 

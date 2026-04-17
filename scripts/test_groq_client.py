@@ -1,11 +1,12 @@
 """
 Sandbox Test: Groq Client
-Purpose: Test LLM API connectivity and basic call
+Purpose: Test LLM API connectivity and basic call for AP debate format
 """
 
 import asyncio
 from langchain_core.messages import SystemMessage, HumanMessage
 from src.ai.clients.groq_client import get_groq_client
+from src.schemas.ap.matches import APRole, DebateSide
 
 
 async def test_groq_client():
@@ -18,8 +19,8 @@ async def test_groq_client():
         llm = get_groq_client(streaming=False, temperature=0.1)
         
         messages = [
-            SystemMessage(content="You are a debate expert. Answer concisely."),
-            HumanMessage(content="What are the 3 key elements of a strong debate argument?")
+            SystemMessage(content="You are an expert Asian Parliamentary debate coach. Provide concise, structured advice."),
+            HumanMessage(content="What are the 3 key elements of a strong AP debate argument?")
         ]
         
         response = await llm.ainvoke(messages)
@@ -32,8 +33,8 @@ async def test_groq_client():
         llm_stream = get_groq_client(streaming=True, temperature=0.5)
         
         messages = [
-            SystemMessage(content="You are a concise debate coach."),
-            HumanMessage(content="List 3 debate tips in bullet format.")
+            SystemMessage(content="You are an AP debate coach. Format responses clearly."),
+            HumanMessage(content="List 3 AP debate tips in bullet format.")
         ]
         
         stream_response = await llm_stream.ainvoke(messages)
