@@ -54,10 +54,8 @@ class APMatchService:
         """Initialize service with repository."""
         self.repository = APMatchRepository()
     
-    # ========================================================================
-    # CREATE
-    # ========================================================================
-    
+    # CREATE  
+      
     async def create_match(
         self,
         db: Session,
@@ -105,9 +103,7 @@ class APMatchService:
             logger.error(f"Failed to create match: {str(e)}")
             raise
     
-    # ========================================================================
     # READ
-    # ========================================================================
     
     async def get_match(
         self,
@@ -200,9 +196,7 @@ class APMatchService:
             logger.error(f"Failed to list matches: {str(e)}")
             raise
     
-    # ========================================================================
     # UPDATE
-    # ========================================================================
     
     async def update_match_status(
         self,
@@ -261,9 +255,7 @@ class APMatchService:
             logger.error(f"Failed to update match status: {str(e)}")
             raise
     
-    # ========================================================================
     # DELETE
-    # ========================================================================
     
     async def cancel_match(
         self,
@@ -299,9 +291,7 @@ class APMatchService:
             logger.error(f"Failed to cancel match: {str(e)}")
             raise
     
-    # ========================================================================
     # HELPER METHODS - Response Building
-    # ========================================================================
     
     def _build_match_response(self, match_db: Match) -> MatchResponse:
         """
@@ -445,9 +435,7 @@ class APMatchService:
         
         return None
     
-    # ========================================================================
     # HELPER METHODS - Validation
-    # ========================================================================
     
     @staticmethod
     def _is_valid_transition(old_status: str, new_status: str) -> bool:

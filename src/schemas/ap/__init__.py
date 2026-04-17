@@ -4,8 +4,8 @@ Asian Parliamentary (AP) Debate Schemas.
 This package contains all request/response schemas for the AP debate format.
 Organized by feature:
 - matches.py: Match creation, listing, management schemas
+- case_prep.py: Case prep generation schemas
 - debates.py: Speech recording, debate state schemas (future)
-- case_prep.py: Case prep coaching schemas (future)
 - judging.py: Judging criteria and submission schemas (future)
 - statistics.py: Statistics and analytics schemas (future)
 """
@@ -29,21 +29,34 @@ from .matches import (
     MatchListResponse,
 )
 
+from .case_prep import (
+    # Request models
+    GenerateCasePrepRequest,
+    # Response models
+    Argument,
+    CasePrepResponse,
+)
+
 __all__ = [
-    # Enums
+    # Enums (from matches)
     "MatchStatus",
     "APRole",
     "DebateSide",
-    # Request models
+    # Request models (from matches)
     "CreateMatchRequest",
     "UpdateMatchStatusRequest",
     "ParticipantInfo",
     "APMatchConfig",
-    # Response models
+    # Response models (from matches)
     "SpeakerInfo",
     "TeamInfo",
     "NextSpeaker",
     "MatchResponse",
     "MatchListItem",
     "MatchListResponse",
+    # Request models (from case_prep)
+    "GenerateCasePrepRequest",
+    # Response models (from case_prep)
+    "Argument",
+    "CasePrepResponse",
 ]
