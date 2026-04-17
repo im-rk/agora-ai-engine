@@ -20,12 +20,12 @@ import logging
 import uuid
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime, timezone, timezone
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from src.models.debate import DebateSession, MatchFormat, MatchStatus, Turn
-from src.models.setup import Motion, MotionCategory, CasePrep
+from src.models.setup import Motion, MotionCategory, CasePrep, AICallLog
 from src.models.user import SkillLevel
 
 logger = logging.getLogger(__name__)
@@ -118,7 +118,7 @@ class APMatchRepository:
                 skill_level=skill_enum,
                 status=MatchStatus.STARTED,
                 poi_enabled=True,
-                started_at=datetime.now(timezone.utcezone.utc)
+                started_at=datetime.now(timezone.utc)
             )
             db.add(debate_session)
             db.commit()
@@ -234,7 +234,7 @@ class APMatchRepository:
             
             # Set end time if match is finishing
             if new_status.upper() in ["FINISHED", "ABORTED"]:
-                match.ended_at = datetime.now(timezone.utcezone.utc)
+                match.ended_at = datetime.now(timezone.utc)
             
             db.commit()
             db.refresh(match)
@@ -271,7 +271,7 @@ class APMatchRepository:
                 return False
             
             match.status = MatchStatus.ABORTED
-            match.ended_at = datetime.now(timezone.utcezone.utc)
+            match.ended_at = datetime.now(timezone.utc)
             db.commit()
             
             logger.info(f"Match cancelled: {match_id}")
@@ -388,7 +388,7 @@ class APMatchRepository:
                 speaker_type=speaker_type,
                 transcript_text=transcript_text,
                 duration_seconds=duration_seconds,
-                started_at=datetime.now(timezone.utcezone.utc)
+                started_at=datetime.now(timezone.utc)
             )
             
             db.add(turn)
@@ -402,3 +402,54 @@ class APMatchRepository:
             db.rollback()
             logger.error(f"Failed to create turn for session {session_id}: {str(e)}")
             raise
+
+
+def log_ai_call(
+    db: Session,
+    session_id: str,
+    agent_name: str,
+    prompt_used: str,
+    model_version: str,
+    temperature: float,
+    raw_output: Optional[str] = None
+) -> AICallLog:
+    """
+    Log an AI/LLM call to the database for observability.
+    
+    Args:
+        db (Session): Database session
+        session_id (str): UUID of DebateSession
+        agent_name (str): Name of agent making the call
+        prompt_used (str): Prompt sent to LLM (truncated to 4000 chars)
+        model_version (str): Model name/version used
+        temperature (float): Temperature parameter used
+        raw_output (str): Raw output from LLM (optional, truncated to 4000 chars)
+    
+    Returns:
+        AICallLog: Created log record
+    
+    Raises:
+        Exception: If database operation fails
+    """
+    try:
+        log_entry = AICallLog(
+            id=uuid.uuid4(),
+            session_id=UUID(session_id),
+            agent_name=agent_name,
+            prompt_used=prompt_used[:4000],  # Truncate to reasonable size
+            model_version=model_version,
+            temperature=temperature,
+            raw_output=raw_output[:4000] if raw_output else None
+        )
+        
+        db.add(log_entry)
+        db.commit()
+        db.refresh(log_entry)
+        
+        logger.info(f"AI call logged: {agent_name} for session {session_id}")
+        return log_entry
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to log AI call for session {session_id}: {str(e)}")
+        raise

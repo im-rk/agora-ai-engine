@@ -1,11 +1,12 @@
 """
 Sandbox Test: Redis Connection
-Purpose: Verify Upstash Redis connectivity and basic operations
+Purpose: Verify Upstash Redis connectivity for AP match state management
 """
 
 import asyncio
 import redis.asyncio as redis
 from src.core.config import settings
+from datetime import datetime, timezone
 
 
 async def test_redis_connection():
@@ -20,27 +21,27 @@ async def test_redis_connection():
         pong = await client.ping()
         print(f"[PASS] Redis PING: {pong}")
         
-        # Test SET/GET
-        test_key = "test:sandbox:key"
-        test_value = "hello_from_python"
+        # Test SET/GET with AP match state key format
+        match_id = "match:ap:test:001"
+        match_state = '{"status": "AWAITING_PARTICIPANTS", "created_at": "' + datetime.now(timezone.utc).isoformat() + '"}'
         
-        await client.set(test_key, test_value, ex=3600)
-        print(f"[PASS] SET {test_key} = {test_value}")
+        await client.set(match_id, match_state, ex=3600)
+        print(f"[PASS] SET {match_id} = AP match state")
         
-        retrieved = await client.get(test_key)
-        print(f"[PASS] GET {test_key} = {retrieved}")
+        retrieved = await client.get(match_id)
+        print(f"[PASS] GET {match_id} = {retrieved[:60]}...")
         
-        # Test PUBLISH/SUBSCRIBE
-        channel = "test:sandbox:channel"
-        message = {"test": "message from sandbox"}
+        # Test PUBLISH/SUBSCRIBE with AP match channel
+        channel = "ap:match:state:updates"
+        message = '{"match_id": "test:001", "status": "DEBATE_IN_PROGRESS"}'
         
         # Publish a message
-        result = await client.publish(channel, str(message))
+        result = await client.publish(channel, message)
         print(f"[PASS] PUBLISH to {channel}: {result} subscribers received")
         
         # Clean up
-        await client.delete(test_key)
-        print(f"[PASS] Cleaned up test key")
+        await client.delete(match_id)
+        print(f"[PASS] Cleaned up test AP match key")
         
         print("\n[PASS] Redis Connection Test PASSED\n")
         return True
@@ -49,7 +50,7 @@ async def test_redis_connection():
         print(f"[FAIL] Redis Connection Test FAILED: {e}\n")
         return False
     finally:
-        await client.close()
+        await client.aclose()
 
 
 if __name__ == "__main__":

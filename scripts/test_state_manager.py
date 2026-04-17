@@ -1,11 +1,13 @@
 """
 Sandbox Test: State Manager
-Purpose: Test saving and retrieving debate state from Redis
+Purpose: Test saving and retrieving AP debate state from Redis
 """
 
 import asyncio
 import uuid
+from datetime import datetime, timezone
 from src.engine.state import state_manager
+from src.schemas.ap.matches import APRole, DebateSide
 
 
 async def test_state_manager():
@@ -17,29 +19,29 @@ async def test_state_manager():
         match_id = str(uuid.uuid4())
         print(f"Match ID: {match_id}")
         
-        # Test 1: Initialize a new match state
-        print("\n[Test 1] Initializing match state...")
+        # Test 1: Initialize a new AP match state
+        print("\n[Test 1] Initializing AP match state...")
         state = await state_manager.initialize_match(
             match_id=match_id,
-            human_side="affirmative",
-            format_type="BP"
+            human_side=DebateSide.GOVERNMENT.value,
+            format_type="AP"
         )
         print(f"[PASS] State initialized: {state.match_id}")
         print(f"   - Match ID: {state.match_id}")
         print(f"   - Status: {state.status}")
         print(f"   - Current turn index: {state.current_turn_index}")
         
-        # Test 2: Add to transcript
-        print("\n[Test 2] Adding turns to transcript...")
+        # Test 2: Add to transcript with AP roles
+        print("\n[Test 2] Adding AP turns to transcript...")
         state.transcript.append({
-            "speaker_role": "PM",
-            "content": "This is the prime minister's opening statement."
+            "speaker_role": APRole.PRIME_MINISTER.value,
+            "content": "This house believes technology improves lives. First, productivity increases."
         })
         state.transcript.append({
-            "speaker_role": "LO",
-            "content": "This is the leader of opposition's rebuttal."
+            "speaker_role": APRole.LEADER_OF_OPPOSITION.value,
+            "content": "We oppose. Technology creates inequality and job displacement."
         })
-        print(f"[PASS] Added 2 turns to transcript")
+        print(f"[PASS] Added 2 AP turns to transcript")
         
         # Test 3: Update state in Redis
         print("\n[Test 3] Persisting state to Redis...")
@@ -47,21 +49,21 @@ async def test_state_manager():
         print(f"[PASS] State persisted to Redis")
         
         # Test 4: Retrieve state from Redis
-        print("\n[Test 4] Retrieving state from Redis...")
+        print("\n[Test 4] Retrieving AP state from Redis...")
         retrieved_state = await state_manager.get_state(match_id)
-        print(f"[PASS] State retrieved from Redis")
+        print(f"[PASS] AP state retrieved from Redis")
         print(f"   - Transcript turns: {len(retrieved_state.transcript)}")
         print(f"   - Turn 1: {retrieved_state.transcript[0]['speaker_role']}")
         print(f"   - Turn 2: {retrieved_state.transcript[1]['speaker_role']}")
         
         # Test 5: Verify data integrity
-        print("\n[Test 5] Verifying data integrity...")
+        print("\n[Test 5] Verifying AP data integrity...")
         assert len(retrieved_state.transcript) == 2
-        assert retrieved_state.transcript[0]["content"] == "This is the prime minister's opening statement."
-        assert retrieved_state.transcript[1]["content"] == "This is the leader of opposition's rebuttal."
+        assert retrieved_state.transcript[0]["content"] == "This house believes technology improves lives. First, productivity increases."
+        assert retrieved_state.transcript[1]["content"] == "We oppose. Technology creates inequality and job displacement."
         print(f"[PASS] Data integrity verified")
         
-        print("\n[PASS] State Manager Test PASSED\n")
+        print("\n[PASS] AP State Manager Test PASSED\n")
         return True
         
     except Exception as e:

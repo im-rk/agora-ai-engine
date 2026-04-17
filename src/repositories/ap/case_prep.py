@@ -43,24 +43,22 @@ class APCasePrepRepository:
     def create_case_prep(
         db: Session,
         user_id: str,
-        match_id: str,
-        side: str,
-        role: str
+        motion_id: str,
+        side: str
     ) -> CasePrep:
         """
         Create empty case prep container (filled by Prep Coach agent later).
         
         Flow:
-        1. Create CasePrep record with user_id, match_id, side, role
+        1. Create CasePrep record with user_id, motion_id, side
         2. Initialize with NULL AI-generated fields
         3. Return record ID for later update
         
         Args:
             db (Session): Database session
             user_id (str): UUID of user creating case prep
-            match_id (str): UUID of match this is for
+            motion_id (str): UUID of motion this is for
             side (str): "government" or "opposition"
-            role (str): "first_speaker", "second_speaker", or "whip"
         
         Returns:
             CasePrep: Empty case prep record (waiting for AI generation)
@@ -75,15 +73,14 @@ class APCasePrepRepository:
         try:
             new_prep = CasePrep(
                 user_id=user_id,
-                match_id=match_id,
-                side=side,
-                role=role
+                motion_id=motion_id,
+                side=side
             )
             
             db.add(new_prep)
             db.flush()
             
-            logger.info(f"Case prep created: {new_prep.id} for user {user_id}, match {match_id}, role {role}")
+            logger.info(f"Case prep created: {new_prep.id} for user {user_id}, motion {motion_id}, side {side}")
             return new_prep
             
         except Exception as e:

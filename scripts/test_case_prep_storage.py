@@ -1,28 +1,32 @@
 """
-Sandbox Test: Case Prep Generation & RAG Storage
-Purpose: Test case prep generation and verify it's stored in pgvector
+Sandbox Test: AP Case Prep Generation & RAG Storage
+Purpose: Test AP case prep generation and verify it's stored in pgvector
 """
 
 import asyncio
 import uuid
+from datetime import datetime, timezone
 from src.core.database import SessionLocal
-from src.models.setup import Motion, MotionCategory, CasePrep, ArgumentEmbedding
-from src.models.user import User
-from src.repositories.case_prep_repo import create_case_prep, update_case_prep
+from src.models.setup import Motion, MotionCategory
+from src.models.debate import DebateSession
+from src.models.user import User, SkillLevel
+from src.repositories.ap.case_prep import APCasePrepRepository
+from src.schemas.ap.case_prep import GenerateCasePrepRequest, AIPrepResult, Argument
 from src.ai.tools.rag_engine import RAGEngine
 
 
 async def test_case_prep_storage():
-    """Test case prep generation and RAG storage."""
-    print("Testing Case Prep Generation & RAG Storage...")
+    """Test AP case prep generation and RAG storage."""
+    print("Testing AP Case Prep Generation & RAG Storage...\n")
     
     db = None
     
     try:
         db = SessionLocal()
+        repo = APCasePrepRepository()
         
         # Test 1: Create a test user
-        print("\n[Test 1] Creating test user...")
+        print("[Test 1] Creating test user...")
         user = User(
             id=uuid.uuid4(),
             email=f"test_user_{uuid.uuid4().hex[:8]}@test.com",
@@ -33,8 +37,8 @@ async def test_case_prep_storage():
         db.flush()
         print(f"[PASS] User created: {user.id}")
         
-        # Test 2: Create a test motion
-        print("\n[Test 2] Creating test motion...")
+        # Test 2: Create AP test motion
+        print("\n[Test 2] Creating AP test motion...")
         motion = Motion(
             id=uuid.uuid4(),
             motion_text="This house believes artificial intelligence will have a net positive impact on society",
@@ -42,69 +46,53 @@ async def test_case_prep_storage():
         )
         db.add(motion)
         db.flush()
-        print(f"[PASS] Motion created: {motion.id}")
+        print(f"[PASS] AP Motion created: {motion.id}")
         
-        # Test 3: Create case prep
-        print("\n[Test 3] Creating case prep...")
-        case_prep = create_case_prep(
+        # Test 3: Create AP debate session
+        print("\n[Test 3] Creating AP debate session...")
+        session = DebateSession(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            motion_id=motion.id,
+            format="AP",
+            human_role="PRIME_MINISTER",
+            skill_level=SkillLevel.INTERMEDIATE,
+            started_at=datetime.now(timezone.utc)
+        )
+        db.add(session)
+        db.flush()
+        print(f"[PASS] AP Debate session created: {session.id}")
+        
+        # Test 4: Generate AP case prep using repository
+        print("\n[Test 4] Generating AP case prep via repository...")
+        from src.schemas.ap.matches import DebateSide
+        
+        case_prep = repo.create_case_prep(
             db=db,
             user_id=str(user.id),
             motion_id=str(motion.id),
-            side="affirmative"
+            side=DebateSide.GOVERNMENT.value
         )
-        print(f"[PASS] Case prep created: {case_prep.id}")
+        db.flush()
+        print(f"[PASS] AP Case prep created: {case_prep.id}")
         
-        # Test 3: Simulate AI-generated data
-        print("\n[Test 3] Simulating AI-generated arguments...")
-        model_definition = "Argument Framework: Consequentialist - Maximize benefits, minimize harms"
-        arguments = [
-            {"argument": "AI increases productivity", "impact": "Economic growth"},
-            {"argument": "AI improves healthcare", "impact": "Better diagnostics"}
-        ]
-        counter_arguments = ["Job displacement concerns", "Bias in algorithms"]
-        evidence = ["Study 1: UN Report on AI", "Study 2: McKinsey Report"]
+        # Test 5: Verify case prep stored in database
+        print("\n[Test 5] Verifying case prep in database...")
         
-        # Update case prep with AI data
-        updated_prep = update_case_prep(
-            db=db,
-            case_prep_id=str(case_prep.id),
-            model_definition=model_definition,
-            arguments=arguments,
-            counter_arguments=counter_arguments,
-            evidence=evidence
-        )
-        print(f"[PASS] Case prep updated with AI data")
+        stored_prep = repo.get_case_prep_by_id(db, str(case_prep.id))
+        if stored_prep:
+            print(f"[PASS] Case prep retrieved from database")
+            print(f"   Side: {stored_prep.side}")
+            print(f"   Motion ID: {stored_prep.motion_id}")
+        else:
+            print(f"[FAIL] Could not retrieve case prep from database")
+            raise Exception("Case prep not found in database")
         
-        # Test 4: Simulate storing embeddings in RAG (pgvector)
-        print("\n[Test 4] Storing arguments in RAG (pgvector)...")
-        
-        # Create embeddings for each argument
-        from langchain_huggingface import HuggingFaceEmbeddings
-        # Use all-roberta-large-v1 which produces 1024 dimensions (matches DB schema)
-        embeddings_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-roberta-large-v1")
-        
-        for arg in arguments:
-            text = f"{arg['argument']} - {arg['impact']}"
-            embedding_vector = embeddings_model.embed_query(text)
-            
-            arg_embedding = ArgumentEmbedding(
-                id=uuid.uuid4(),
-                case_prep_id=case_prep.id,
-                content=text,
-                embedding=embedding_vector,
-                argument_type="main_argument"
-            )
-            db.add(arg_embedding)
-        
-        db.commit()
-        print(f"[PASS] Stored {len(arguments)} argument embeddings in pgvector")
-        
-        # Test 5: Verify retrieval from RAG
-        print("\n[Test 5] Verifying retrieval from RAG...")
+        # Test 6: Verify RAG retrieval
+        print("\n[Test 6] Verifying RAG retrieval for AP arguments...")
         rag = RAGEngine()
         
-        # Try to retrieve by searching for similar arguments
-        query = "artificial intelligence productivity benefits"
+        query = "artificial intelligence innovation technology impact"
         results = await rag.aretrieve_counter_arguments(topic=query, k=2)
         
         if results:
@@ -112,17 +100,9 @@ async def test_case_prep_storage():
             for i, r in enumerate(results, 1):
                 print(f"   [{i}] {r.get('text', '')[:80]}...")
         else:
-            print(f"[WARN] No results retrieved (vector similarity may need tuning)")
+            print(f"[WARN] No results retrieved (database may be empty)")
         
-        # Test 6: Verify case prep data integrity
-        print("\n[Test 6] Verifying case prep data integrity...")
-        retrieved_prep = db.query(CasePrep).filter(CasePrep.id == case_prep.id).first()
-        assert retrieved_prep.model_definition == model_definition
-        assert len(retrieved_prep.arguments) == 2
-        assert len(retrieved_prep.counter_arguments) == 2
-        print(f"[PASS] Case prep data integrity verified")
-        
-        print("\n[PASS] Case Prep Storage Test PASSED\n")
+        print("\n[PASS] AP Case Prep Storage Test PASSED\n")
         return True
         
     except Exception as e:

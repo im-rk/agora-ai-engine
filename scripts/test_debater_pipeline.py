@@ -1,12 +1,14 @@
 """
-Sandbox Test: Debater 4-Phase Pipeline
-Purpose: Test full FAANG debate pipeline orchestration
+Sandbox Test: AP Debater 4-Phase Pipeline
+Purpose: Test full AP debate pipeline orchestration
 """
 
 import asyncio
 import uuid
+from datetime import datetime, timezone
 from src.ai.agents.debater import DebaterAgent
 from src.core.redis_client import get_redis_async
+from src.schemas.ap.matches import APRole, DebateSide
 
 
 async def test_debater_pipeline():
@@ -21,16 +23,16 @@ async def test_debater_pipeline():
         redis_client = await get_redis_async()
         debater = DebaterAgent(redis_client=redis_client)
         
-        # Sample debate transcript
+        # Sample AP debate transcript
         sample_transcript = """
-        PM: "Free trade agreements are beneficial because they increase competition and lower prices for consumers. Studies show that countries with free trade policies have higher GDP growth."
+        PM: "This house believes free trade agreements benefit all nations. First, they increase competition and consumer choice."
         
-        LO: "That's not necessarily true. Free trade can harm domestic industries. We see factory closures in developed countries due to outsourcing."
+        LO: "That's not necessarily true. Free trade can harm domestic industries and workers through outsourcing."
         """
         
-        # Test parameters
-        speaker_role = "MG"  # Member of Government (affirmative)
-        speaker_id = "test:debater:mug_001"
+        # AP test parameters
+        speaker_role = APRole.GOVERNMENT_WHIP.value
+        speaker_id = "test:debater:ap:gw_001"
         match_id = str(uuid.uuid4())
         
         # Test 1: Phase 1 - Clash Matrix

@@ -19,11 +19,7 @@ from .matches import (
     CreateMatchRequest,
     UpdateMatchStatusRequest,
     ParticipantInfo,
-    APMatchConfig,
     # Response models
-    SpeakerInfo,
-    TeamInfo,
-    NextSpeaker,
     MatchResponse,
     MatchListItem,
     MatchListResponse,
