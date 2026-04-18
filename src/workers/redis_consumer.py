@@ -107,8 +107,15 @@ async def start_redis_consumer():
                         else:
                             logger.info(
                                 f"[CONSUMER] Human ({current_speaker.role}) speaks first. "
-                                f"Listening for Deepgram bytes..."
+                                f"Notifying frontend..."
                             )
+                            # Tell React it's the human's turn immediately
+                            await client.publish(channel, json.dumps({
+                                "event": "TURN_STARTED",
+                                "speaker": "human",
+                                "role": current_speaker.role,
+                                "turn_index": state.current_turn_index,
+                            }))
                     else:
                         logger.warning(
                             f"[CONSUMER] Invalid state for match {match_id}: "
@@ -202,8 +209,15 @@ async def start_redis_consumer():
                         else:
                             logger.info(
                                 f"[CONSUMER] It is the {next_speaker.role}'s turn (Human). "
-                                f"Waiting for Deepgram bytes from Go gateway..."
+                                f"Notifying frontend..."
                             )
+                            # Tell React it's the human's turn so the mic button activates
+                            await client.publish(channel, json.dumps({
+                                "event": "TURN_STARTED",
+                                "speaker": "human",
+                                "role": next_speaker.role,
+                                "turn_index": state.current_turn_index,
+                            }))
                     else:
                         logger.warning(
                             f"[CONSUMER] Turn index {state.current_turn_index} is beyond "
@@ -218,4 +232,6 @@ async def start_redis_consumer():
                 pass
             except Exception as e:
                 logger.exception(f"[CONSUMER] Error: {e}")
+
+
 

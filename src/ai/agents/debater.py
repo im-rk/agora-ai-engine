@@ -223,7 +223,8 @@ class DebaterAgent:
         evidence: list[dict],
         speaker_id: str,
         personality_trait: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        channel: Optional[str] = None
     ) -> str:
         """
         Phase 4: Generation - Stream response with callbacks.
@@ -239,6 +240,7 @@ class DebaterAgent:
             speaker_id: Unique speaker identifier
             personality_trait: Optional persona override (e.g., "aggressive", "analytical")
             session_id: Debate session ID for logging
+            channel: Redis channel to stream tokens to
             
         Yields:
             Response tokens as they're generated (published to Redis)
@@ -249,8 +251,8 @@ class DebaterAgent:
         # Initialize streaming Groq client
         llm = get_groq_client(streaming=True, temperature=0.7)
         
-        # Create Redis channel for this speaker
-        channel = f"debate:{speaker_id}:response"
+        # Use provided channel or fallback securely
+        channel = channel or f"debate:{speaker_id}:response"
         
         # Create streaming callback handler
         callback = RedisStreamingCallbackHandler(
@@ -310,7 +312,8 @@ class DebaterAgent:
         speaker_role: str,
         speaker_id: str,
         personality_trait: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        channel: Optional[str] = None
     ) -> str:
         """
         Main orchestrator: Execute all 4 phases sequentially.
@@ -347,7 +350,8 @@ class DebaterAgent:
             evidence=evidence,
             speaker_id=speaker_id,
             personality_trait=personality_trait,
-            session_id=session_id
+            session_id=session_id,
+            channel=channel
         )
         
         return response

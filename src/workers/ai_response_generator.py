@@ -100,6 +100,16 @@ async def generate_ai_response(
         # Initialize debater agent for this turn
         debater = DebaterAgent(redis_client=client)
 
+        # Announce to the frontend who is speaking RIGHT NOW
+        # This switches the UI from "Waiting..." to the active speaker display
+        await client.publish(channel, json.dumps({
+            "event": "TURN_STARTED",
+            "speaker": "ai",
+            "role": speaker_role,
+            "turn_index": state.current_turn_index,
+        }))
+        logger.info(f"[AI] Published TURN_STARTED for {speaker_role} on {channel}")
+
         # Execute 4-phase orchestration (streaming to Redis)
         # session_id is the DebateSession ID for logging all LLM calls
         response = await debater.orchestrate_debater_response(
@@ -107,7 +117,8 @@ async def generate_ai_response(
             speaker_role=speaker_role,
             speaker_id=speaker_id,
             personality_trait="balanced",
-            session_id=match_id
+            session_id=match_id,
+            channel=channel
         )
 
         logger.info(
@@ -149,6 +160,22 @@ async def generate_ai_response(
 
         db.commit()   # Makes the turn record permanent in the database
         logger.debug(f"[AI] Turn record committed to database: {turn.id}")
+
+        # CRITICAL: Advance the turn index so the debate continues.
+        # (For human turns, the Go gateway does this when END_TURN is clicked.
+        #  For AI turns, Python must do it here after generation is complete.)
+        state.current_turn_index += 1
+        await state_manager.update_state(state)
+        logger.info(
+            f"[AI] Turn advanced to index {state.current_turn_index} "
+            f"(of {len(state.schedule)} total turns)"
+        )
+
+        # Publish TURN_CHANGED so redis_consumer decides who speaks next
+        await client.publish(channel, json.dumps({
+            "action": "TURN_CHANGED",
+        }))
+        logger.info(f"[AI] Published TURN_CHANGED to {channel}")
 
         return response
 

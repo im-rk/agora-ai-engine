@@ -1,12 +1,12 @@
 """
-Asian Parliamentary (AP) Match Endpoints.
+British Parliamentary (BP) Match Endpoints.
 
 API Routes for match management:
-- POST   /api/v1/ap/matches              → Create new AP match
-- GET    /api/v1/ap/matches              → List user's AP matches
-- GET    /api/v1/ap/matches/{id}         → Get AP match details
-- PATCH  /api/v1/ap/matches/{id}         → Update match status
-- DELETE /api/v1/ap/matches/{id}         → Cancel match
+- POST   /api/v1/bp/matches              → Create new BP match
+- GET    /api/v1/bp/matches              → List user's BP matches
+- GET    /api/v1/bp/matches/{id}         → Get BP match details
+- PATCH  /api/v1/bp/matches/{id}         → Update match status
+- DELETE /api/v1/bp/matches/{id}         → Cancel match
 
 All endpoints require authentication (get_current_user dependency).
 """
@@ -21,27 +21,25 @@ from src.core.database import get_db
 from src.api.dependencies import get_current_user
 from src.schemas.auth import CurrentUserData
 from src.schemas.common import APIResponse, APIStatusCode
-from src.schemas.ap.matches import (
+from src.schemas.bp.matches import (
     CreateMatchRequest,
     MatchResponse,
     MatchListResponse,
     UpdateMatchStatusRequest,
     MatchStatus,
 )
-from src.services.ap.matches import APMatchService
+from src.services.bp.matches import BPMatchService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-match_service = APMatchService()
+match_service = BPMatchService()
 
-# ...
-
-# POST /api/v1/ap/matches - Create New Match
+# POST /api/v1/bp/matches - Create New Match
 @router.post(
     "",
     response_model=APIResponse[MatchResponse],
     status_code=status.HTTP_201_CREATED,
-    summary="Create new AP match"
+    summary="Create new BP match"
 )
 async def create_match(
     request: CreateMatchRequest,
@@ -49,10 +47,10 @@ async def create_match(
     db: Session = Depends(get_db),
 ):
     """
-    Create a new Asian Parliamentary debate match.
+    Create a new British Parliamentary debate match.
     """
     try:
-        logger.info(f"Creating AP match for user {user.user_id}: {request.motion[:50]}...")
+        logger.info(f"Creating BP match for user {user.user_id}: {request.motion[:50]}...")
         
         # Create match via service
         match = await match_service.create_match(db, user.user_id, request)
@@ -79,12 +77,12 @@ async def create_match(
         )
 
 
-# GET /api/v1/ap/matches - List Matches
+# GET /api/v1/bp/matches - List Matches
 
 @router.get(
     "",
     response_model=APIResponse[MatchListResponse],
-    summary="List user's AP matches"
+    summary="List user's BP matches"
 )
 async def list_matches(
     status_filter: Optional[str] = Query(
@@ -106,7 +104,7 @@ async def list_matches(
     db: Session = Depends(get_db),
 ):
     try:
-        logger.info(f"Listing AP matches for user {user.user_id}")
+        logger.info(f"Listing BP matches for user {user.user_id}")
         
         matches = await match_service.list_matches(
             db=db,
@@ -137,12 +135,12 @@ async def list_matches(
         )
 
 
-# GET /api/v1/ap/matches/{id} - Get Match Details
+# GET /api/v1/bp/matches/{id} - Get Match Details
 
 @router.get(
     "/{match_id}",
     response_model=APIResponse[MatchResponse],
-    summary="Get AP match details"
+    summary="Get BP match details"
 )
 async def get_match(
     match_id: str = Path(..., description="Match UUID"),
@@ -150,14 +148,14 @@ async def get_match(
     db: Session = Depends(get_db),
 ):
     """
-    Get detailed information about a specific AP match.
+    Get detailed information about a specific BP match.
     
     Returns full match state including:
-    - All 6 participants with roles and speech details
-    - Government and opposition teams
+    - All 8 participants with roles and speech details
+    - 4 teams (OG, OO, CG, CO)
     - Current debate status
     - Next speaker in line
-    - Match metadata (tournament, judge, etc.)
+    - Match metadata
     
     Authentication: Required (JWT token)
     
@@ -171,28 +169,6 @@ async def get_match(
         HTTPException(401): Unauthorized
         HTTPException(404): Match not found
         HTTPException(500): Server error
-    
-    Example Response:
-    {
-        "status": "success",
-        "data": {
-            "id": "match_uuid",
-            "title": "...",
-            "format": "asian_parliamentary",
-            "status": "in_progress",
-            "government": { ... 3 speakers ... },
-            "opposition": { ... 3 speakers ... },
-            "speeches_completed": 3,
-            "current_speaker_index": 2,
-            "next_speaker": {
-                "role": "second_speaker",
-                "side": "opposition",
-                "user_id": "user_5",
-                "order_position": 4
-            },
-            ...
-        }
-    }
     """
     try:
         logger.info(f"Retrieving match {match_id} for user {user.user_id}")
@@ -221,7 +197,7 @@ async def get_match(
         )
 
 
-# PATCH /api/v1/ap/matches/{id} - Update Match Status
+# PATCH /api/v1/bp/matches/{id} - Update Match Status
 
 @router.patch(
     "/{match_id}",
@@ -251,8 +227,8 @@ async def update_match_status(
         match_id (str): Match UUID
     
     Request Body:
-        status (MatchStatus): New status (pending, in_progress, completed, cancelled)
-        reason (Optional[str]): Reason for status change (required for cancellation)
+        status (MatchStatus): New status
+        reason (Optional[str]): Reason for status change
     
     Returns:
         APIResponse[MatchResponse]: Updated match
@@ -263,18 +239,6 @@ async def update_match_status(
         HTTPException(403): Forbidden (not authorized to modify)
         HTTPException(404): Match not found
         HTTPException(500): Server error
-    
-    Example Request (Complete a match):
-    {
-        "status": "completed",
-        "reason": "Judging submitted successfully"
-    }
-    
-    Example Request (Cancel a match):
-    {
-        "status": "cancelled",
-        "reason": "Technical difficulties - will reschedule"
-    }
     """
     try:
         logger.info(f"Updating match {match_id} status to {request.status}")
@@ -316,12 +280,12 @@ async def update_match_status(
         )
 
 
-# DELETE /api/v1/ap/matches/{id} - Cancel Match
+# DELETE /api/v1/bp/matches/{id} - Cancel Match
 
 @router.delete(
     "/{match_id}",
     response_model=APIResponse,
-    summary="Cancel AP match"
+    summary="Cancel BP match"
 )
 async def cancel_match(
     match_id: str,
@@ -330,7 +294,7 @@ async def cancel_match(
     db: Session = Depends(get_db),
 ):
     """
-    Cancel/delete an AP match.
+    Cancel/delete a BP match.
     
     Soft Delete Behavior:
     - Doesn't actually delete match from database
@@ -355,13 +319,6 @@ async def cancel_match(
         HTTPException(403): Forbidden (not creator)
         HTTPException(404): Match not found
         HTTPException(500): Server error
-    
-    Example Response:
-    {
-        "status": "success",
-        "message": "Match cancelled successfully",
-        "data": null
-    }
     """
     try:
         logger.info(f"Cancelling match {match_id} by user {user.user_id}")

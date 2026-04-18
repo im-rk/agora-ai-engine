@@ -55,7 +55,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
     
     # Set expiration
-    expire = datetime.now(timezone.utcezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     
     # Encode JWT
@@ -102,15 +102,17 @@ def verify_supabase_token(token: str) -> Optional[SupabaseUserDTO]:
         For now, we decode without verification and extract user data.
     """
     try:
-        # Decode JWT without verification (trusting Supabase)
-        # In production, verify with Supabase public key
-        payload = jwt.decode(token, options={"verify_signature": False})
+        # Decode JWT without verification (trusting Supabase token sent from gateway)
+        # Gateway handles extraction and some base checks
+        payload = jwt.get_unverified_claims(token)
         
         # Extract user data from Supabase token
         user_id = payload.get("sub")  # Supabase uses 'sub' for user ID
         email = payload.get("email")
         
         if not user_id or not email:
+            import logging
+            logging.getLogger(__name__).warning("Supabase token missing 'sub' or 'email'")
             return None
         
         # Get user metadata if available
@@ -124,8 +126,12 @@ def verify_supabase_token(token: str) -> Optional[SupabaseUserDTO]:
             metadata=user_metadata
         )
     
-    except JWTError:
+    except JWTError as e:
+        import logging
+        logging.getLogger(__name__).error(f"JWTError parsing Supabase token: {e}")
         return None
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error parsing Supabase token: {e}")
         return None
 

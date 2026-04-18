@@ -1,5 +1,5 @@
 """
-Asian Parliamentary (AP) Case Prep Repository.
+British Parliamentary (BP) Case Prep Repository.
 
 Database layer for case prep persistence and queries.
 
@@ -10,11 +10,11 @@ Responsibilities:
 - Update case prep with AI-generated data
 - Log AI calls for observability
 
-Database Model: CasePrep (adapted for AP format)
+Database Model: CasePrep (shared with AP — format-agnostic)
 Columns: id, user_id, match_id, side, role, model_definition, arguments,
          counter_arguments, evidence, role_brief, tips, created_at, updated_at
 
-Note: AP-specific data stored as JSON/JSONB for flexibility.
+Note: BP-specific data stored as JSON/JSONB for flexibility.
 """
 
 import logging
@@ -30,11 +30,14 @@ from src.services.embedding_service import get_embedding
 logger = logging.getLogger(__name__)
 
 
-class APCasePrepRepository:
+class BPCasePrepRepository:
     """
-    Repository for AP case prep database operations.
+    Repository for BP case prep database operations.
     
     Handles all CRUD operations for case prep with role-specific context.
+    Uses the same CasePrep table as AP — no format-specific filtering needed
+    because case prep is linked to a match via match_id, and the match
+    already has format=BP.
     """
     
     # CREATE
@@ -58,7 +61,7 @@ class APCasePrepRepository:
             db (Session): Database session
             user_id (str): UUID of user creating case prep
             motion_id (str): UUID of motion this is for
-            side (str): "government" or "opposition"
+            side (str): "Government" or "Opposition" (mapped from BPTeam)
         
         Returns:
             CasePrep: Empty case prep record (waiting for AI generation)
@@ -122,6 +125,14 @@ class APCasePrepRepository:
         
         Follows resource hierarchy: Match → User's Case Prep
         Used to get current user's case prep within a match context.
+        
+        Args:
+            db (Session): Database session
+            user_id (str): User UUID
+            match_id (str): Match UUID
+        
+        Returns:
+            Optional[CasePrep]: User's case prep for match if found
         """
         try:
             from src.models.debate import DebateSession
@@ -185,9 +196,6 @@ class APCasePrepRepository:
             case_prep.arguments = arguments
             case_prep.counter_arguments = counter_arguments
             case_prep.evidence = evidence
-            case_prep.role_brief = role_brief or {}
-            case_prep.tips = tips or []
-            case_prep.updated_at = datetime.now(timezone.utc)
             
             db.add(case_prep)
             db.commit()

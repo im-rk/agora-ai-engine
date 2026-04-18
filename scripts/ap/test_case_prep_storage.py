@@ -3,9 +3,12 @@ Sandbox Test: AP Case Prep Generation & RAG Storage
 Purpose: Test AP case prep generation and verify it's stored in pgvector
 """
 
+import sys
+import os
 import asyncio
 import uuid
 from datetime import datetime, timezone
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.core.database import SessionLocal
 from src.models.setup import Motion, MotionCategory
 from src.models.debate import DebateSession

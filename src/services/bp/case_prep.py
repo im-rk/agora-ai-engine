@@ -1,5 +1,5 @@
 """
-Asian Parliamentary (AP) Case Prep Service.
+British Parliamentary (BP) Case Prep Service.
 
 Business logic layer for case preparation workflow.
 
@@ -12,7 +12,9 @@ Responsibilities:
 6. Generate embeddings for semantic search
 7. Log AI call for observability
 
-This service sits between routes and repository.
+Key difference from AP:
+- format="british_parliamentary" passed to AI agent
+- BPTeam/BPRole used instead of DebateSide/APRole
 """
 
 import logging
@@ -21,9 +23,9 @@ from typing import Optional, Dict, Any
 
 from sqlalchemy.orm import Session
 
-from src.repositories.ap.case_prep import APCasePrepRepository
+from src.repositories.bp.case_prep import BPCasePrepRepository
 from src.ai.agents.prep_coach import generate_case_prep
-from src.schemas.ap.case_prep import (
+from src.schemas.bp.case_prep import (
     CasePrepResponse,
     GenerateCasePrepRequest,
 )
@@ -31,9 +33,9 @@ from src.schemas.ap.case_prep import (
 logger = logging.getLogger(__name__)
 
 
-class APCasePrepService:
+class BPCasePrepService:
     """
-    Service for AP case prep operations.
+    Service for BP case prep operations.
     
     Orchestrates the complete case prep workflow:
     AI agent → validation → persistence → embeddings → logging
@@ -41,7 +43,7 @@ class APCasePrepService:
     
     def __init__(self):
         """Initialize service with repository."""
-        self.repository = APCasePrepRepository()
+        self.repository = BPCasePrepRepository()
     
     # GENERATE CASE PREP
         
@@ -53,11 +55,11 @@ class APCasePrepService:
         request: GenerateCasePrepRequest
     ) -> CasePrepResponse:
         """
-        Generate role-specific case prep for user in match.
+        Generate role-specific case prep for user in BP match.
         
         Complete Workflow:
         1. Create empty CasePrep record
-        2. Call Prep Coach agent (role-specific)
+        2. Call Prep Coach agent (role-specific, BP format)
         3. Validate AI response
         4. Update CasePrep with generated data
         5. Generate embeddings (for semantic search)
@@ -67,13 +69,14 @@ class APCasePrepService:
         Business Rules:
         - User must be authenticated
         - Only one case prep per user per match
-        - Case prep is role-specific (first_speaker, second_speaker, whip)
+        - Case prep is role-specific (8 BP roles)
+        - BP closing teams MUST provide extension arguments
         
         Args:
             db (Session): Database session
             user_id (str): UUID of user generating case prep
             match_id (str): UUID of match
-            request (GenerateCasePrepRequest): Motion, side, and role
+            request (GenerateCasePrepRequest): Motion, team, and role
         
         Returns:
             CasePrepResponse: Generated case prep with all guidance
@@ -83,14 +86,24 @@ class APCasePrepService:
             Exception: If database operation fails
         """
         try:
-            logger.info(f"Generating case prep for user {user_id} in match {match_id}")
+            logger.info(f"Generating BP case prep for user {user_id} in match {match_id}")
             
-            # Extract side and role from request
-            user_side = request.side
+            # Extract team and role from request
+            user_team = request.team
             user_role = request.role
             
-            logger.info(f"User {user_id} role: {user_role} on {user_side} side")
-            # Fetch existing empty CasePrep record created by MatchService
+            # Map BPTeam to side for CasePrep record
+            team_to_side = {
+                "opening_government": "Government",
+                "opening_opposition": "Opposition",
+                "closing_government": "Government",
+                "closing_opposition": "Opposition",
+            }
+            user_side = team_to_side.get(user_team.value, "Government")
+            
+            logger.info(f"User {user_id} role: {user_role} on {user_team} team (side: {user_side})")
+            
+            # Retrieve the CasePrep record that was created during match creation
             case_prep_db = self.repository.get_case_prep_by_user_match(
                 db=db,
                 user_id=user_id,
@@ -98,12 +111,13 @@ class APCasePrepService:
             )
             
             if not case_prep_db:
-                raise ValueError("CasePrep initialization failed or match not found")
+                raise ValueError("Case prep record not found for this match. The match might be corrupted.")
             
+            # Call Prep Coach AI agent with BP format
             ai_response = await generate_case_prep(
                 motion_text=request.motion,
                 side=user_side,
-                format="asian_parliamentary"
+                format="british_parliamentary"    # ← BP format (AP uses "asian_parliamentary")
             )
             
             # Validate AI response structure
@@ -115,6 +129,7 @@ class APCasePrepService:
             if missing:
                 raise ValueError(f"AI response missing required fields: {missing}")
             
+            # Update CasePrep with AI-generated data
             case_prep_db = self.repository.update_case_prep(
                 db=db,
                 case_prep_id=str(case_prep_db.id),
@@ -127,8 +142,6 @@ class APCasePrepService:
             )
             
             # Generate vector embeddings for semantic search
-            # Extracts text from arguments, counter_arguments, evidence
-            # and creates searchable vectors stored in PostgreSQL (pgvector)
             embedding_texts = []
             
             # Extract argument claims for embedding
@@ -152,29 +165,29 @@ class APCasePrepService:
             if embedding_texts:
                 self.repository.save_embeddings(db, str(case_prep_db.id), embedding_texts)
             
-            #Log AI call for observability
+            # Log AI call for observability
             self.repository.save_ai_call_log(
                 db=db,
                 match_id=match_id,
                 agent_name="prep_coach",
                 prompt_used=json.dumps({
                     "motion": request.motion,
-                    "side": user_side,
-                    "role": user_role,
-                    "format": "asian_parliamentary"
+                    "team": user_team.value,
+                    "role": user_role.value,
+                    "format": "british_parliamentary"
                 }),
                 model_version="gpt-4o-mini",
                 temperature=0.7,
                 raw_output=json.dumps(ai_response, indent=2)
             )
             
-            logger.info(f"Case prep generated: {case_prep_db.id}")
+            logger.info(f"BP Case prep generated: {case_prep_db.id}")
             
             return CasePrepResponse(
                 id=str(case_prep_db.id),
                 user_id=str(case_prep_db.user_id),
                 match_id=match_id,
-                side=user_side.lower(),
+                team=user_team,
                 role=user_role,
                 model_definition=case_prep_db.model_definition or "",
                 arguments=case_prep_db.arguments or [],
@@ -186,7 +199,7 @@ class APCasePrepService:
             logger.warning(f"Validation error: {str(e)}")
             raise
         except Exception as e:
-            logger.error(f"Failed to generate case prep: {str(e)}")
+            logger.error(f"Failed to generate BP case prep: {str(e)}")
             db.rollback()
             raise
     
@@ -199,7 +212,7 @@ class APCasePrepService:
         match_id: str
     ) -> Optional[CasePrepResponse]:
         """
-        Get case prep for current user in a match.
+        Get case prep for current user in a BP match.
         
         Args:
             db (Session): Database session
@@ -221,16 +234,27 @@ class APCasePrepService:
             
             # Need to get the DebateSession to know the role!
             from src.models.debate import DebateSession
+            from src.schemas.bp.matches import BPTeam
             session = db.query(DebateSession).filter(DebateSession.id == match_id).first()
             if not session:
                 return None
+                
+            human_role = session.human_role
+            side = case_prep_db.side.lower()
+            closing_roles = {"member_of_government", "member_of_opposition", "government_whip", "opposition_whip"}
+            is_closing = human_role.lower() in closing_roles
+            
+            if side == "government":
+                human_team = BPTeam.CLOSING_GOVERNMENT if is_closing else BPTeam.OPENING_GOVERNMENT
+            else:
+                human_team = BPTeam.CLOSING_OPPOSITION if is_closing else BPTeam.OPENING_OPPOSITION
             
             return CasePrepResponse(
                 id=str(case_prep_db.id),
                 user_id=str(case_prep_db.user_id),
                 match_id=match_id,
-                side=case_prep_db.side.lower(),
-                role=session.human_role,
+                team=human_team,
+                role=human_role,
                 model_definition=case_prep_db.model_definition or "",
                 arguments=case_prep_db.arguments or [],
                 counter_arguments=case_prep_db.counter_arguments or [],
@@ -238,5 +262,5 @@ class APCasePrepService:
             )
             
         except Exception as e:
-            logger.error(f"Failed to retrieve case prep: {str(e)}")
+            logger.error(f"Failed to retrieve BP case prep: {str(e)}")
             raise
