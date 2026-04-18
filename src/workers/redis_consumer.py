@@ -190,7 +190,13 @@ async def generate_ai_response(
         
         # STEP 4: Save turn to database
         db = SessionLocal()
-        turn = APMatchRepository.create_turn(
+        
+        create_turn_func = APMatchRepository.create_turn
+        if hasattr(state, 'format_type') and state.format_type.upper() == "BP":
+            from src.repositories.bp.matches import BPMatchRepository
+            create_turn_func = BPMatchRepository.create_turn
+            
+        turn = create_turn_func(
             db=db,
             session_id=match_id,
             turn_number=state.current_turn_index,
