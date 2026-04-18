@@ -122,22 +122,18 @@ class APCasePrepRepository:
         
         Follows resource hierarchy: Match → User's Case Prep
         Used to get current user's case prep within a match context.
-        
-        Args:
-            db (Session): Database session
-            user_id (str): User UUID
-            match_id (str): Match UUID
-        
-        Returns:
-            Optional[CasePrep]: User's case prep for match if found
         """
         try:
-            return db.query(CasePrep).filter(
-                and_(
-                    CasePrep.user_id == user_id,
-                    CasePrep.match_id == match_id
-                )
+            from src.models.debate import DebateSession
+            match = db.query(DebateSession).filter(
+                DebateSession.id == match_id,
+                DebateSession.user_id == user_id
             ).first()
+            
+            if not match or not match.case_prep_id:
+                return None
+                
+            return db.query(CasePrep).filter(CasePrep.id == match.case_prep_id).first()
         except Exception as e:
             logger.error(f"Failed to fetch case prep by user+match: {str(e)}")
             raise
@@ -191,7 +187,7 @@ class APCasePrepRepository:
             case_prep.evidence = evidence
             case_prep.role_brief = role_brief or {}
             case_prep.tips = tips or []
-            case_prep.updated_at = datetime.now(timezone.utcezone.utc)
+            case_prep.updated_at = datetime.now(timezone.utc)
             
             db.add(case_prep)
             db.commit()

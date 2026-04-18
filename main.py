@@ -9,7 +9,6 @@ Current implementation:
 """
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 import logging
@@ -60,13 +59,8 @@ app = FastAPI(
 # ============ MIDDLEWARE ============
 
 # Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # TODO: Restrict to frontend domain in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Disabled because the Go Gateway at port 8080 specifically handles all CORS preflight and headers.
+# Double-stacking them will cause 'TypeError: Failed to fetch' on the frontend.
 
 # ============ ROUTES ============
 

@@ -90,15 +90,15 @@ class APCasePrepService:
             user_role = request.role
             
             logger.info(f"User {user_id} role: {user_role} on {user_side} side")
-            
-            # Create empty CasePrep record
-            case_prep_db = self.repository.create_case_prep(
+            # Fetch existing empty CasePrep record created by MatchService
+            case_prep_db = self.repository.get_case_prep_by_user_match(
                 db=db,
                 user_id=user_id,
-                match_id=match_id,
-                side=user_side,
-                role=user_role
+                match_id=match_id
             )
+            
+            if not case_prep_db:
+                raise ValueError("CasePrep initialization failed or match not found")
             
             ai_response = await generate_case_prep(
                 motion_text=request.motion,
@@ -170,7 +170,17 @@ class APCasePrepService:
             
             logger.info(f"Case prep generated: {case_prep_db.id}")
             
-            return CasePrepResponse.model_validate(case_prep_db)
+            return CasePrepResponse(
+                id=str(case_prep_db.id),
+                user_id=str(case_prep_db.user_id),
+                match_id=match_id,
+                side=user_side.lower(),
+                role=user_role,
+                model_definition=case_prep_db.model_definition or "",
+                arguments=case_prep_db.arguments or [],
+                counter_arguments=case_prep_db.counter_arguments or [],
+                evidence=case_prep_db.evidence or []
+            )
             
         except ValueError as e:
             logger.warning(f"Validation error: {str(e)}")
@@ -209,8 +219,23 @@ class APCasePrepService:
                 logger.info(f"No case prep found for user {user_id} in match {match_id}")
                 return None
             
-            # Use Pydantic model_validate to convert DB object to schema
-            return CasePrepResponse.model_validate(case_prep_db)
+            # Need to get the DebateSession to know the role!
+            from src.models.debate import DebateSession
+            session = db.query(DebateSession).filter(DebateSession.id == match_id).first()
+            if not session:
+                return None
+            
+            return CasePrepResponse(
+                id=str(case_prep_db.id),
+                user_id=str(case_prep_db.user_id),
+                match_id=match_id,
+                side=case_prep_db.side.lower(),
+                role=session.human_role,
+                model_definition=case_prep_db.model_definition or "",
+                arguments=case_prep_db.arguments or [],
+                counter_arguments=case_prep_db.counter_arguments or [],
+                evidence=case_prep_db.evidence or []
+            )
             
         except Exception as e:
             logger.error(f"Failed to retrieve case prep: {str(e)}")

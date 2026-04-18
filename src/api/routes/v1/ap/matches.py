@@ -14,7 +14,7 @@ All endpoints require authentication (get_current_user dependency).
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 from sqlalchemy.orm import Session
 
 from src.core.database import get_db
@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 match_service = APMatchService()
 
+# ...
 
 # POST /api/v1/ap/matches - Create New Match
 @router.post(
@@ -49,54 +50,6 @@ async def create_match(
 ):
     """
     Create a new Asian Parliamentary debate match.
-    
-    Business Logic:
-    1. Create Motion record (debate topic)
-    2. Create CasePrep record (user's prepared case)
-    3. Create DebateSession record (the match)
-    4. Initialize Redis state
-    5. Generate AI case prep
-    
-    Authentication: Required (JWT token)
-    
-    Args:
-        request (CreateMatchRequest): 
-            - motion: Debate motion text (10-500 chars)
-            - side: "government" or "opposition"
-            - role: AP role (prime_minister, etc.)
-        
-        user (CurrentUserData): Authenticated user creating the match
-        db (Session): Database session
-    
-    Returns:
-        APIResponse[MatchResponse]: Created match
-    
-    Raises:
-        HTTPException(401): Unauthorized
-        HTTPException(500): Server error
-    
-    Example Request:
-    {
-        "motion": "This house believes AI development should be regulated",
-        "side": "government",
-        "role": "prime_minister"
-    }
-    
-    Example Response:
-    {
-        "status": "success",
-        "message": "Match created successfully",
-        "data": {
-            "match_id": "match_uuid",
-            "motion": "This house believes...",
-            "status": "debate_in_progress",
-            "created_by": "user_uuid",
-            "your_role": "prime_minister",
-            "your_side": "government",
-            "created_at": "2026-04-17T10:00:00Z",
-            "participants": []
-        }
-    }
     """
     try:
         logger.info(f"Creating AP match for user {user.user_id}: {request.motion[:50]}...")
@@ -152,48 +105,6 @@ async def list_matches(
     user: CurrentUserData = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get paginated list of user's AP matches.
-    
-    Query Features:
-    - Filter by match status (pending, in_progress, completed, cancelled)
-    - Sort by creation or start time
-    - Pagination with configurable page size
-    
-    Authentication: Required (JWT token)
-    
-    Query Parameters:
-        status (Optional[str]): Filter by status
-        skip (int): Pagination offset (default: 0)
-        limit (int): Results per page (default: 10, max: 100)
-        sort_by (str): Sort field (default: created_at)
-        order (str): Sort order (default: desc)
-    
-    Returns:
-        APIResponse[MatchListResponse]:
-        {
-            "status": "success",
-            "data": {
-                "matches": [
-                    {
-                        "id": "match_1",
-                        "title": "Technology Debate",
-                        "status": "in_progress",
-                        "speeches_completed": 3,
-                        "created_at": "...",
-                        ...
-                    }
-                ],
-                "total": 45,
-                "skip": 0,
-                "limit": 10
-            }
-        }
-    
-    Raises:
-        HTTPException(401): Unauthorized
-        HTTPException(500): Server error
-    """
     try:
         logger.info(f"Listing AP matches for user {user.user_id}")
         
@@ -234,7 +145,7 @@ async def list_matches(
     summary="Get AP match details"
 )
 async def get_match(
-    match_id: str = Query(..., description="Match UUID"),
+    match_id: str = Path(..., description="Match UUID"),
     user: CurrentUserData = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

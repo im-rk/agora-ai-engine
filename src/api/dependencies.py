@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 import logging
 
 from src.core.database import get_db
-from src.core.security import verify_token
+from src.core.security import verify_supabase_token
 from src.schemas.auth import CurrentUserData
 
 logger = logging.getLogger(__name__)
@@ -59,8 +59,8 @@ async def get_current_user(
             detail="Invalid authorization header format. Use: Bearer {token}"
         )
     
-    # Verify token and extract claims
-    token_data = verify_token(token)
+    # Verify token and extract claims using Supabase JWT verification
+    token_data = verify_supabase_token(token)
     
     if not token_data:
         logger.warning("Invalid or expired token")
@@ -71,7 +71,8 @@ async def get_current_user(
     
     logger.info(f"User authenticated: {token_data.email}")
     
+    # Map SupabaseUserDTO back to CurrentUserData for backward compatibility
     return CurrentUserData(
-        user_id=token_data.user_id,
+        user_id=token_data.id,
         email=token_data.email
     )

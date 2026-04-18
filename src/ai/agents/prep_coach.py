@@ -28,17 +28,22 @@ async def generate_case_prep(
         ValueError: If LLM fails to produce valid structured output
     """
     from src.ai.prompts.prep_coach_prompts import get_prep_coach_prompt
-    from src.ai.clients.openai_client import get_openai_client
+    from src.ai.clients.groq_client import get_groq_client
 
     prompt = get_prep_coach_prompt()
-    llm = get_openai_client(model="gpt-4o-mini", temperature=0.7)
+    llm = get_groq_client(model="llama-3.3-70b-versatile", temperature=0.7)
     structured_llm = llm.with_structured_output(AIPrepResult)
     chain = prompt | structured_llm
 
-    result = await chain.ainvoke({
-        "motion_text": motion_text,
-        "side": side,
-        "format": format
-    })
-
-    return result.model_dump()
+    try:
+        result = await chain.ainvoke({
+            "motion_text": motion_text,
+            "side": side,
+            "format": format
+        })
+        return result.model_dump()
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to generate case prep with OpenAI: {str(e)}")
+        raise

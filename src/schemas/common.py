@@ -49,7 +49,7 @@ class APIResponse(BaseModel, Generic[T]):
     def __init__(self, **data):
         super().__init__(**data)
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utcezone.utc).isoformat()
+            self.timestamp = datetime.now(timezone.utc).isoformat()
 
 
 class DebateFormatEnum(str, Enum):
