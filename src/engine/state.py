@@ -48,19 +48,27 @@ class MatchStateManager:
                 Turn(role="Leader of Opposition", side="Opposition", player_type="ai")
             ]
         
-        human_assigned=False
+        human_assigned = False
 
         if preferred_role:
+            normalized_pref = preferred_role.lower().replace("_", " ")
             for turn in schedule:
-                if turn.role.lower()==preferred_role.lower():
-                    turn.player_type="human"
-                    human_assigned=True
+                if turn.role.lower() == normalized_pref:
+                    turn.player_type = "human"
+                    human_assigned = True
                     break
 
         if not human_assigned:
+            # Normalize BP teams (e.g. 'opening_government' -> 'government')
+            normalized_side = human_side.lower()
+            if "government" in normalized_side:
+                normalized_side = "government"
+            elif "opposition" in normalized_side:
+                normalized_side = "opposition"
+                
             for turn in schedule:
-                if turn.side.lower()==human_side.lower():
-                    turn.player_type="human"
+                if turn.side.lower() == normalized_side:
+                    turn.player_type = "human"
                     break
         
         return schedule

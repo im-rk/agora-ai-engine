@@ -219,3 +219,145 @@ async def start_redis_consumer():
             except Exception as e:
                 logger.exception(f"[CONSUMER] Error: {e}")
 
+
+async def generate_ai_response(
+    client: redis.Redis,
+    channel: str,
+    match_id: str,
+    state: object
+):
+    """
+    Execute 4-phase debate pipeline with streaming.
+    
+    Phases:
+    1. State Tracking: Parse transcript into clash matrix
+    2. Query Synthesis: Generate targeted search queries
+    3. Retrieve & Re-Rank: Find best evidence
+    4. Generation: Stream response via Redis callbacks
+    
+    Args:
+        client: Redis async client
+        channel: Redis channel (e.g., "debate:{match_id}:events")
+        match_id: Unique match identifier (DebateSession UUID)
+        state: LiveMatchState object from state_manager
+    """
+    db = None
+    try:
+        # Validate state before proceeding
+        if not state.schedule or state.current_turn_index >= len(state.schedule):
+            logger.error(f"Invalid state for match {match_id}: schedule empty or index out of bounds")
+            return
+        
+        # Get current speaker info
+        current_speaker = state.schedule[state.current_turn_index]
+        speaker_role = current_speaker.role  
+        speaker_id = f"{match_id}:{state.current_turn_index}"
+        
+        # Reconstruct debate transcript from state history
+        transcript = reconstruct_transcript(state)
+        
+        logger.info(f"Starting 4-phase pipeline for {speaker_role} (speaker_id: {speaker_id})")
+        logger.debug(f"Transcript length: {len(transcript)} chars")
+        
+        # Initialize debater agent
+        debater = DebaterAgent(redis_client=client)
+        
+        # Execute 4-phase orchestration (streaming to Redis)
+        # session_id is the DebateSession ID for logging all LLM calls
+        response = await debater.orchestrate_debater_response(
+            transcript=transcript,
+            speaker_role=speaker_role,
+            speaker_id=speaker_id,
+            personality_trait="balanced",
+            session_id=match_id
+        )
+        
+        logger.info(f"AI Response generated ({len(response)} chars): {response[:100]}...")
+        
+        # STEP 3: Persist the generated response back to state
+        # Create turn object with speaker role and content
+        turn_data = {
+            "speaker_role": speaker_role,
+            "speaker_side": current_speaker.side,
+            "content": response,
+            "player_type": "ai"
+        }
+        
+        # Append to transcript (in-memory state)
+        if not hasattr(state, 'transcript'):
+            state.transcript = []
+        state.transcript.append(turn_data)
+        logger.debug(f"Appended {speaker_role} ({current_speaker.side}) response to transcript. Total turns: {len(state.transcript)}")
+        
+        # Save updated state back to Redis
+        await state_manager.update_state(state)
+        logger.debug(f"State persisted to Redis for match {match_id}")
+        
+        # STEP 4: Save turn to database
+        db = SessionLocal()
+        
+        create_turn_func = APMatchRepository.create_turn
+        if hasattr(state, 'format_type') and state.format_type.upper() == "BP":
+            from src.repositories.bp.matches import BPMatchRepository
+            create_turn_func = BPMatchRepository.create_turn
+            
+        turn = create_turn_func(
+            db=db,
+            session_id=match_id,
+            turn_number=state.current_turn_index,
+            speaker_role=speaker_role,
+            speaker_type=SpeakerType.AI.value,
+            transcript_text=response,
+            duration_seconds=0  # Will be updated if we have timing data
+        )
+        logger.info(f"Turn record created in database: {turn.id}")
+
+        db.commit()   # Makes the turn record permanent in the database
+        logger.debug(f"Turn record committed to database: {turn.id}")
+
+        
+    except Exception as e:
+        logger.exception(f"Error in generate_ai_response: {e}")
+        # Publish error event to Redis
+        error_event = {
+            "event": "AI_ERROR",
+            "error_message": f"Failed to generate response: {str(e)}"
+        }
+        await client.publish(channel, json.dumps(error_event))
+    finally:
+        if db:
+            db.close()
+
+
+def reconstruct_transcript(state: object) -> str:
+    """
+    Reconstruct debate transcript from state history.
+    
+    Concatenates all previous turns with speaker role, side, and content.
+    Used to provide context to DebaterAgent for response generation.
+    
+    Args:
+        state: LiveMatchState object
+    
+    Returns:
+        Formatted debate transcript string
+    """
+    if not hasattr(state, 'transcript') or not state.transcript:
+        return "Debate just started. This is the opening speech."
+    
+    transcript_lines = []
+    for turn in state.transcript:
+        speaker_role = turn.get("speaker_role", "Unknown")
+        speaker_side = turn.get("speaker_side", "")
+        content = turn.get("content", "")
+        
+        # Format: "ROLE (SIDE): content"
+        if speaker_side:
+            header = f"{speaker_role} ({speaker_side}): {content}"
+        else:
+            header = f"{speaker_role}: {content}"
+        
+        transcript_lines.append(header)
+    
+    return "\n\n".join(transcript_lines)
+
