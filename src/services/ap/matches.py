@@ -115,16 +115,9 @@ class APMatchService:
             )
             logger.info(f"Redis state initialized for match {match_id}")
             
-            # STEP 5: Publish START_MATCH event to trigger Python consumer
-            import redis.asyncio as redis
-            from src.core.config import settings
-            
-            redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
-            await redis_client.publish(
-                f"debate:{match_id}:events",
-                json.dumps({"action": "START_MATCH", "match_id": match_id})
-            )
-            logger.info(f"Published START_MATCH event for {match_id}")
+            # STEP 5: Deferred - START_MATCH event is explicitly published by the Frontend 
+            # via WebSocket ONLY when the user clicks 'Enter Arena' and mounts the ArenaPage.
+            # This prevents premature AI generation while the user is still on the Prep page.
             
             # STEP 6: Generate case prep for user via AI
             from src.schemas.ap.case_prep import GenerateCasePrepRequest
