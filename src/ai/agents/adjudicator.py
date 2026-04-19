@@ -484,7 +484,7 @@ class AdjudicatorAgent:
         """
         print("[ADJUDICATOR] Starting 5-phase adjudication...")
         
-        # ===== PHASE 1: Extract Macro-Clashes =====
+        # 1: Extract Macro-Clashes
         print("[ADJUDICATOR] Phase 1: Extracting macro-clashes...")
         clashes = await self.phase1_extract_macro_clashes(
             transcript=transcript,
@@ -492,7 +492,7 @@ class AdjudicatorAgent:
         )
         print(f"[ADJUDICATOR] Found {len(clashes)} macro-clashes")
         
-        # ===== PHASE 2: Build WCM Matrix =====
+        # 2: Build WCM Matrix
         print("[ADJUDICATOR] Phase 2: Building Weighted Clash Matrix...")
         wcm_clashes, net_logic_score = await self.phase2_build_weighted_clash_matrix(
             clashes=clashes,
@@ -504,7 +504,7 @@ class AdjudicatorAgent:
         # Format speaker info
         speaker_info = f"Format: {debate_format}\nSpeakers: {', '.join(speaker_roles)}"
         
-        # ===== PHASE 3: Analyze WUDC Pillars =====
+        # 3: Analyze WUDC Pillars
         print("[ADJUDICATOR] Phase 3: Analyzing WUDC pillars...")
         pillar_breakdown = await self.phase3_analyze_wudc_pillars(
             wcm_clashes=wcm_clashes,
@@ -515,7 +515,7 @@ class AdjudicatorAgent:
         )
         print("[ADJUDICATOR] Pillar analysis complete")
         
-        # ===== PHASE 4: Grade Speakers =====
+        # 4: Grade Speakers
         print("[ADJUDICATOR] Phase 4: Grading speakers...")
         speaker_scores = await self.phase4_grade_speakers(
             speaker_roles=speaker_roles,
@@ -527,7 +527,7 @@ class AdjudicatorAgent:
         )
         print("[ADJUDICATOR] Speaker grading complete")
         
-        # ===== PHASE 5: Generate Summary =====
+        # 5: Generate Summary
         print("[ADJUDICATOR] Phase 5: Generating summary...")
         summary = await self.phase5_generate_summary(
             wcm_summary={
@@ -540,7 +540,7 @@ class AdjudicatorAgent:
         )
         print("[ADJUDICATOR] Adjudication complete!")
         
-        # ===== Final Results =====
+        # Final Results
         result = {
             "clashes": [c.__dict__ for c in clashes],
             "wcm_matrix": [c.__dict__ for c in wcm_clashes],

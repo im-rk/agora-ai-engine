@@ -31,6 +31,7 @@ from .ai_response_generator import (
     generate_ai_response,
     persist_human_turn,
 )
+from .adjudication_worker import run_adjudication_worker
 
 logger = logging.getLogger(__name__)
 
@@ -187,11 +188,28 @@ async def start_redis_consumer():
                         )
                         state.status = "finished"
                         await state_manager.update_state(state)
-                        # TODO Step 4: wire adjudication here
+                        
+                        # Publish to frontend that debate is complete
                         await client.publish(channel, json.dumps({
                             "event": "MATCH_COMPLETE",
+                            "match_id": match_id,
                             "message": "All speeches delivered. Adjudication starting..."
                         }))
+                        
+                        # TRIGGER ASYNC ADJUDICATION WORKER
+                        # This runs in background, doesn't block the consumer
+                        logger.info(
+                            f"[CONSUMER] Starting async adjudication worker for {match_id}..."
+                        )
+                        asyncio.create_task(
+                            run_adjudication_worker(
+                                client=client,
+                                channel=channel,
+                                match_id=match_id,
+                                state=state
+                            )
+                        )
+                        
                         continue
 
                     # Determine and trigger next speaker

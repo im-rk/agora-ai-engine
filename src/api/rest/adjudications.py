@@ -168,15 +168,65 @@ async def adjudicate_debate(
         )
 
 
+@router.get("/{session_id}/status")
+async def get_adjudication_status(session_id: str):
+    """
+    GET /api/adjudications/{session_id}/status
+    
+    Check adjudication status and progress.
+    
+    Frontend polls this endpoint every 2 seconds while waiting for adjudication.
+    
+    Returns:
+        {
+            "status": "processing" | "completed" | "error",
+            "verdict": "Government" | "Opposition" (if completed),
+            "gov_score": 82 (if completed),
+            "opp_score": 79 (if completed),
+            "message": "Adjudication in progress..."
+        }
+    """
+    db = SessionLocal()
+    try:
+        result = get_adjudication_result(db, session_id)
+        
+        if result is None:
+            # Still processing or not found
+            return {
+                "status": "processing",
+                "message": "Adjudication in progress. Check again in 2 seconds.",
+                "session_id": session_id
+            }
+        
+        # Adjudication complete!
+        return {
+            "status": "completed",
+            "verdict": result["winning_team"],
+            "gov_score": result["gov_total_score"],
+            "opp_score": result["opp_total_score"],
+            "session_id": session_id
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to check status: {str(e)}",
+            "session_id": session_id
+        }
+    finally:
+        db.close()
+
+
 @router.get("/{session_id}", response_model=Optional[AdjudicationResult])
 async def get_adjudication(session_id: str):
     """
     GET /api/adjudications/{session_id}
     
-    Retrieve cached adjudication result for a debate session.
+    Retrieve full cached adjudication result for a debate session.
+    
+    Use /status endpoint to check if ready, then call this to get full details.
     
     Returns:
-        AdjudicationResult if found, null otherwise
+        Complete AdjudicationResult if found, null otherwise
     """
     db = SessionLocal()
     try:
