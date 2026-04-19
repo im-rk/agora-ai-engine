@@ -62,9 +62,15 @@ class ArgumentEmbedding(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_prep_id = Column(UUID(as_uuid=True), ForeignKey("case_preps.id"), nullable=False)
     
+    match_id = Column(UUID(as_uuid=True), nullable=False, index=True)      
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)       
+    side = Column(String, nullable=False, index=True)                      
+    role = Column(String, nullable=True)                                  
+    motion_category = Column(String, nullable=True)                        
+    
     content = Column(String, nullable=False)
     embedding = Column(Vector(1024), nullable=False)
-    argument_type = Column(String) 
+    argument_type = Column(String)  
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

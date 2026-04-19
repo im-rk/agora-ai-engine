@@ -272,19 +272,32 @@ class BPCasePrepRepository:
     def save_embeddings(
         db: Session,
         case_prep_id: str,
+        match_id: str,
+        user_id: str,
+        side: str,
+        role: str,
+        motion_category: str,
         embedding_texts: List[Tuple[str, str]]
     ) -> int:
         """
-        Generate and store vector embeddings for semantic search.
+        Generate and store vector embeddings for semantic search WITH metadata.
         
         Converts text content (arguments, counter-arguments, evidence) into
-        vector embeddings and persists them to PostgreSQL pgvector column.
+        vector embeddings with rich metadata for smart filtering and retrieval.
         
-        Used for semantic search: finding similar arguments across all case preps.
+        Used for:
+        1. Same-match search: Find similar arguments in THIS debate
+        2. Cross-match learning: Find arguments from OTHER debates with same topic
+        3. Role-specific search: Filter by debater role
         
         Args:
             db (Session): Database session
             case_prep_id (str): UUID of case prep being embedded
+            match_id (str): UUID of debate session
+            user_id (str): UUID of debater
+            side (str): "Government" or "Opposition"
+            role (str): Debater role (BP role like "opening_government")
+            motion_category (str): Motion topic category
             embedding_texts (List[Tuple[str, str]]): List of (content, type) tuples
                 - content: Text to embed
                 - type: "argument_claim", "argument_reasoning", "counter_argument", "evidence"
@@ -303,9 +316,14 @@ class BPCasePrepRepository:
                     # Generate vector embedding from text
                     embedding_vector = get_embedding(content)
                     
-                    # Create embedding record
+                    # Create embedding record WITH metadata
                     embedding_record = ArgumentEmbedding(
                         case_prep_id=case_prep_id,
+                        match_id=match_id,                
+                        user_id=user_id,                  
+                        side=side,                        
+                        role=role,                        
+                        motion_category=motion_category,  
                         content=content,
                         embedding=embedding_vector,
                         argument_type=arg_type
@@ -320,7 +338,7 @@ class BPCasePrepRepository:
                     continue
             
             db.commit()
-            logger.info(f"Stored {stored_count} embeddings for case prep {case_prep_id}")
+            logger.info(f"Stored {stored_count} embeddings for case prep {case_prep_id} in match {match_id}")
             return stored_count
             
         except Exception as e:

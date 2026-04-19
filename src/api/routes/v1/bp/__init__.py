@@ -18,6 +18,7 @@ Then included in v1/__init__.py with /bp prefix
 from fastapi import APIRouter
 from .matches import router as matches_router
 from .case_prep import router as case_prep_router
+from .adjudications import router as adjudications_router
 
 # ============================================================================
 # Create BP router - prefix will be added by parent router
@@ -33,6 +34,12 @@ bp_router.include_router(
     case_prep_router,
     prefix="/matches/{match_id}/case-prep",
     tags=["BP Case Prep"]
+)
+
+# Adjudication endpoints (nested under matches)
+bp_router.include_router(
+    adjudications_router,
+    tags=["BP Adjudication"]
 )
 
 __all__ = ["bp_router"]
