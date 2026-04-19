@@ -19,6 +19,13 @@ from fastapi import APIRouter
 from .matches import router as matches_router
 from .case_prep import router as case_prep_router
 
+# Import the new adjudications router
+try:
+    from src.api.rest.adjudications import router as adjudications_router
+    HAS_ADJUDICATIONS = True
+except ImportError:
+    HAS_ADJUDICATIONS = False
+
 # ============================================================================
 # Create AP router - prefix will be added by parent router
 # ============================================================================
@@ -34,5 +41,12 @@ ap_router.include_router(
     prefix="/matches/{match_id}/case-prep",
     tags=["AP Case Prep"]
 )
+
+# Adjudication endpoints (if available)
+if HAS_ADJUDICATIONS:
+    ap_router.include_router(
+        adjudications_router,
+        tags=["AP Adjudication"]
+    )
 
 __all__ = ["ap_router"]
