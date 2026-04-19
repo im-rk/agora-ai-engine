@@ -81,4 +81,5 @@ Personality/Style: {personality}
 - Make opponent claims look small compared to OUR logic
 - Build toward emotional conclusion (why does this matter?)
 
-NOW: Generate your compelling 90-second rebuttal. Write as you would SPEAK it."""
+NOW: Generate your compelling rebuttal. 
+CRITICAL RULE: Keep your response STRICTLY under 4 to 5 short sentences (Absolute Maximum 60 words). Be punchy, fast, and extremely concise. Write exactly as you would speak it."""

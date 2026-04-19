@@ -66,12 +66,16 @@ async def start_redis_consumer():
 
     async for message in pubsub.listen():
         if message["type"] == "pmessage":
-            channel = message["channel"]
-            # Extract match_id from channel format: "debate:{match_id}:turns"
-            parts = channel.split(":")
+            raw_channel = message["channel"]
+            # Extract match_id from channel format: "debate:{match_id}:*"
+            parts = raw_channel.split(":")
             match_id = parts[1] if len(parts) > 1 else None
             if not match_id:
                 continue
+            # CRITICAL: Always normalize to :turns - this is the channel the Go
+            # gateway (and thus the frontend WebSocket) subscribes to.
+            # Without this, events published to :events are invisible to React.
+            channel = f"debate:{match_id}:turns"
             raw_data = message["data"]
 
             logger.debug(f"[CONSUMER] Python heard on {channel}: {raw_data}")
