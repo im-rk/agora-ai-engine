@@ -161,9 +161,18 @@ class BPCasePrepService:
                 if evidence:
                     embedding_texts.append((evidence, "evidence"))
             
-            # Save embeddings to PostgreSQL via repository
+            # Save embeddings to PostgreSQL via repository WITH metadata
             if embedding_texts:
-                self.repository.save_embeddings(db, str(case_prep_db.id), embedding_texts)
+                self.repository.save_embeddings(
+                    db=db,
+                    case_prep_id=str(case_prep_db.id),
+                    match_id=match_id,
+                    user_id=user_id,
+                    side=user_side,
+                    role=user_role,
+                    motion_category="parliamentary_motion",
+                    embedding_texts=embedding_texts
+                )
             
             # Log AI call for observability
             self.repository.save_ai_call_log(
