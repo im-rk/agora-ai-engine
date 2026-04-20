@@ -84,14 +84,15 @@ async def generate_ai_response(
 
         # PREPARATION: Extract speaker info and context
         current_speaker = state.schedule[state.current_turn_index]
-        speaker_role = current_speaker.role
+        speaker_role = current_speaker.role  # e.g., "Prime Minister (PM)", "Government Whip", etc.
         speaker_id = f"{match_id}:{state.current_turn_index}"
+        speaker_side = current_speaker.side  # "Government" or "Opposition"
 
         # Reconstruct debate transcript from state history
         transcript = reconstruct_transcript(state)
 
         logger.info(
-            f"[AI] Starting 4-phase pipeline for {speaker_role} "
+            f"[AI] Starting 4-phase pipeline for {speaker_role} ({speaker_side})"
             f"(speaker_id: {speaker_id})"
         )
         logger.debug(f"[AI] Transcript length: {len(transcript)} chars")
@@ -105,7 +106,8 @@ async def generate_ai_response(
         await client.publish(channel, json.dumps({
             "event": "TURN_STARTED",
             "speaker": "ai",
-            "role": speaker_role,
+            "role": speaker_role,  # Full role name with side
+            "side": speaker_side,
             "turn_index": state.current_turn_index,
         }))
         logger.info(f"[AI] Published TURN_STARTED for {speaker_role} on {channel}")
@@ -114,7 +116,7 @@ async def generate_ai_response(
         # session_id is the DebateSession ID for logging all LLM calls
         response = await debater.orchestrate_debater_response(
             transcript=transcript,
-            speaker_role=speaker_role,
+            speaker_role=speaker_role,  # Full AP role name
             speaker_id=speaker_id,
             personality_trait="balanced",
             session_id=match_id,
