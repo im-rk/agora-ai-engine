@@ -35,106 +35,111 @@ async def run_adjudication_worker(
 ) -> bool:
     """
     Background worker that runs adjudication when debate ends.
-    
-    This task runs asynchronously and doesn't block the Redis consumer.
-    
+
     Flow:
     1. Extract transcript from state
-    2. Publish "started" event to frontend
-    3. Run 5-phase adjudication pipeline
-    4. Save results to database
-    5. Publish "completed" event with verdict
-    
-    Args:
-        client: Redis client for publishing updates
-        channel: Redis channel (debate:match_id:turns)
-        match_id: Debate session ID
-        state: Complete debate state with transcript from Redis
-        
-    Returns:
-        True if successful, False if failed
+    2. Publish "adjudication started" to frontend
+    3. Run 5-phase adjudication pipeline (returns raw dict)
+    4. Parse raw dict → AdjudicationResult Pydantic object
+    5. Save to database via result.to_database_dict()
+    6. Publish ADJUDICATION_COMPLETE with verdict to frontend
     """
     try:
         logger.info(
             f"[ADJUDICATION WORKER] Starting adjudication for match {match_id}..."
         )
-        
-        # ===== STEP 1: Extract transcript from state =====
+
+        # STEP 1: Extract transcript from state
         transcript_text = _format_transcript(state.transcript)
         speaker_roles = [turn.role for turn in state.schedule]
-        
+
         logger.debug(
-            f"[ADJUDICATION WORKER] Extracted transcript: "
-            f"{len(transcript_text)} chars, {len(speaker_roles)} speakers"
+            f"[ADJUDICATION WORKER] Transcript: {len(transcript_text)} chars, "
+            f"{len(speaker_roles)} speakers"
         )
-        
-        # ===== STEP 2: Publish "adjudication started" event =====
+
+        # STEP 2: Notify frontend that adjudication has begun
         await client.publish(channel, json.dumps({
             "event": "ADJUDICATION_STARTED",
             "match_id": match_id,
             "message": "AI Adjudication in progress (Phase 1/5)..."
         }))
-        
-        logger.info(f"[ADJUDICATION WORKER] Published ADJUDICATION_STARTED event")
-        
-        # ===== STEP 3: Run adjudication pipeline =====
+        logger.info(f"[ADJUDICATION WORKER] Published ADJUDICATION_STARTED")
+
+        # STEP 3: Run the 5-phase pipeline
+        # NOTE: orchestrate_adjudication() returns a plain dict, NOT a Pydantic object.
         adjudicator = AdjudicatorAgent()
-        
-        logger.info(
-            f"[ADJUDICATION WORKER] Starting 5-phase pipeline for {match_id}..."
-        )
-        
-        result = await adjudicator.orchestrate_adjudication(
+        result_dict = await adjudicator.orchestrate_adjudication(
             transcript=transcript_text,
-            debate_format="AP",  # AP format by default (6 speakers)
+            debate_format="AP",
             speaker_roles=speaker_roles,
             session_id=match_id
         )
-        
+
+        # STEP 4: Parse raw dict → AdjudicationResult Pydantic object
+        # This is REQUIRED because:
+        #   - result.winning_team is a computed @property on PillarBreakdown
+        #   - result.to_database_dict() is a method on AdjudicationResult
+        # Neither exists on a plain dict — this was the original critical bug.
+        from src.schemas.adjudication import (
+            AdjudicationResult, MacroClash, WCMEntry,
+            PillarBreakdown, PillarScore, AdjudicationSummary, SpeakerScore
+        )
+
+        # Phase 3 may nest pillars under "pillars" key or directly at top level
+        pillar_data = result_dict.get("pillar_breakdown", {})
+        pillar_pillars = pillar_data.get("pillars", pillar_data)
+
+        # Phase 4 nests the list under "speaker_scores" key inside the dict
+        raw_speaker_scores = result_dict.get("speaker_scores", {})
+        if isinstance(raw_speaker_scores, dict):
+            speaker_scores_list = raw_speaker_scores.get("speaker_scores", [])
+        else:
+            speaker_scores_list = raw_speaker_scores  # already a flat list
+
+        result = AdjudicationResult(
+            clashes=[MacroClash(**c) for c in result_dict.get("clashes", [])],
+            wcm_matrix=[WCMEntry(**w) for w in result_dict.get("wcm_matrix", [])],
+            net_logic_score=result_dict.get("net_logic_score", 0.0),
+            pillar_breakdown=PillarBreakdown(
+                matter=PillarScore(**pillar_pillars["matter"]),
+                manner=PillarScore(**pillar_pillars["manner"]),
+                method=PillarScore(**pillar_pillars["method"]),
+                role=PillarScore(**pillar_pillars["role"]),
+                pillar_reasoning=pillar_data.get("pillar_reasoning", "")
+            ),
+            speaker_scores=[SpeakerScore(**s) for s in speaker_scores_list],
+            summary=AdjudicationSummary(**result_dict.get("summary", {})),
+            session_id=match_id
+        )
+
         logger.info(
             f"[ADJUDICATION WORKER] Adjudication complete! "
-            f"Winner: {result['winning_team']}, "
-            f"Score: {result['gov_total_score']}-{result['opp_total_score']}"
+            f"Winner: {result.winning_team}, "
+            f"Gov: {result.government_score} — Opp: {result.opposition_score}"
         )
-        
-        # ===== STEP 4: Save to database =====
+
+        # STEP 5: Save to Supabase database
         db = SessionLocal()
         try:
             adjudication_dict = result.to_database_dict()
             success = store_adjudication_result(db, match_id, adjudication_dict)
-            
             if not success:
-                logger.error(
-                    f"[ADJUDICATION WORKER] Failed to store result for {match_id}"
-                )
-                # Continue anyway - publish what we have
+                logger.error(f"[ADJUDICATION WORKER] DB store failed for {match_id}")
             else:
-                logger.info(
-                    f"[ADJUDICATION WORKER] Result saved to database for {match_id}"
-                )
-                
+                logger.info(f"[ADJUDICATION WORKER] Result saved to DB for {match_id}")
         except Exception as db_error:
             logger.exception(
-                f"[ADJUDICATION WORKER] Database error for {match_id}: {type(db_error).__name__}"
+                f"[ADJUDICATION WORKER] DB error for {match_id}: {type(db_error).__name__}"
             )
         finally:
             db.close()
-        
-        # ===== STEP 5: Publish final verdict to frontend =====
+
+        # STEP 6: Push final verdict to frontend via Redis → Go → WebSocket
         await client.publish(channel, json.dumps({
             "event": "ADJUDICATION_COMPLETE",
             "match_id": match_id,
             "status": "completed",
-            "verdict": result['winning_team'],
-            "gov_score": result['gov_total_score'],
-            "opp_score": result['opp_total_score'],
-            "clash_table": {
-                "clashes": [c.__dict__ if hasattr(c, '__dict__') else c for c in result['clashes']],
-                "wcm_matrix": [w.__dict__ if hasattr(w, '__dict__') else w for w in result['wcm_matrix']],
-                "net_logic_score": result['net_logic_score']
-            },
-            "summary": result['summary'].__dict__ if hasattr(result['summary'], '__dict__') else result['summary']
-        }))
         
         logger.info(
             f"[ADJUDICATION WORKER] Final verdict published for {match_id}"
