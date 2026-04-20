@@ -104,6 +104,13 @@ async def run_adjudication_worker(
             "reasoning": "Unavailable"
         }
         
+        fallback_summary = {
+            "adjudication": "Adjudication summary ran into an error. Please review the pillar breakdown for context.",
+            "key_decision_1": "Unavailable",
+            "key_decision_2": "Unavailable",
+            "key_decision_3": "Unavailable"
+        }
+
         result = AdjudicationResult(
             clashes=[MacroClash(**c) for c in result_dict.get("clashes", [])],
             wcm_matrix=[WCMEntry(**w) for w in result_dict.get("wcm_matrix", [])],
@@ -116,7 +123,7 @@ async def run_adjudication_worker(
                 pillar_reasoning=pillar_data.get("pillar_reasoning", "")
             ),
             speaker_scores=[SpeakerScore(**s) for s in speaker_scores_list],
-            summary=AdjudicationSummary(**result_dict.get("summary", {})),
+            summary=AdjudicationSummary(**result_dict.get("summary", fallback_summary)),
             session_id=match_id
         )
 
