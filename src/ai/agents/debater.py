@@ -36,6 +36,14 @@ from src.ai.prompts.debater_prompts import (
     QUERY_SYNTHESIS_PROMPT,
     RESPONSE_GENERATION_PROMPT,
 )
+# Import AP-specific role constraints and functions
+from src.ai.prompts.ap import (
+    AP_ROLE_CONSTRAINTS,
+    get_ap_role_instructions,
+    AP_CLASH_MATRIX_PARSER_PROMPT,
+    AP_QUERY_SYNTHESIS_PROMPT,
+    AP_RESPONSE_GENERATION_PROMPT,
+)
 from src.core.redis_client import get_redis_async
 from src.core.config import settings
 from src.core.database import SessionLocal
@@ -75,7 +83,7 @@ class DebaterAgent:
         llm = get_groq_client(streaming=False, temperature=0.1)
 
         prompt = [
-            SystemMessage(content=CLASH_MATRIX_PARSER_PROMPT),
+            SystemMessage(content=AP_CLASH_MATRIX_PARSER_PROMPT),
             HumanMessage(content=f"Parse this transcript:\n\n{transcript}")
         ]
 
@@ -89,7 +97,7 @@ class DebaterAgent:
                     db=db,
                     session_id=session_id,
                     agent_name="DebaterAgent:Phase1-ClashMatrixParser",
-                    prompt_used=CLASH_MATRIX_PARSER_PROMPT[:500],
+                    prompt_used=AP_CLASH_MATRIX_PARSER_PROMPT[:500],
                     model_version="llama-3.1-8b-instant",
                     temperature=0.1,
                     raw_output=response.content[:1000]
@@ -120,21 +128,34 @@ class DebaterAgent:
         """
         Phase 2: Query Synthesis - Generate targeted search queries.
         
-        Creates 3-5 specific queries (not just keywords) to find best evidence
-        that directly addresses opponent's claims and vulnerabilities.
+        Creates 3-5 specific queries tailored to speaker role:
+        - Whips: Focus on rebuttals and comparative impact analysis
+        - Other speakers: Focus on advancing arguments with evidence
         
         Args:
             clash_matrix: Output from Phase 1 (opponent claims, dropped args, vuln)
-            speaker_role: "affirmative" or "negative"
+            speaker_role: AP speaker role (e.g., "Prime Minister (PM)", "Government Whip")
             session_id: Debate session ID for logging
             
         Returns:
             List of 3-5 optimized search queries
         """
         llm = get_groq_client(streaming=False, temperature=0.3)
+        
+        # Extract role constraint for query synthesis (AP-specific)
+        role_constraint = ""
+        if speaker_role in AP_ROLE_CONSTRAINTS:
+            role_info = AP_ROLE_CONSTRAINTS[speaker_role]
+            role_constraint = f"CONSTRAINT: {role_info['constraint']}\nFOCUS: {role_info['focus']}"
+        else:
+            role_constraint = f"Role: {speaker_role} - Advance your team's position with evidence"
 
+        # Use AP-specific query synthesis prompt
         prompt = [
-            SystemMessage(content=QUERY_SYNTHESIS_PROMPT.format(speaker_role=speaker_role)),
+            SystemMessage(content=AP_QUERY_SYNTHESIS_PROMPT.format(
+                speaker_role=speaker_role,
+                role_constraint=role_constraint
+            )),
             HumanMessage(content=f"Generate search queries for:\n{json.dumps(clash_matrix, indent=2)}")
         ]
 
@@ -148,7 +169,7 @@ class DebaterAgent:
                     db=db,
                     session_id=session_id,
                     agent_name="DebaterAgent:Phase2-QuerySynthesis",
-                    prompt_used=QUERY_SYNTHESIS_PROMPT[:500],
+                    prompt_used=AP_QUERY_SYNTHESIS_PROMPT[:500],
                     model_version="llama-3.1-8b-instant",
                     temperature=0.3,
                     raw_output=response.content[:1000]
@@ -266,9 +287,23 @@ class DebaterAgent:
             for i, e in enumerate(evidence[:3])
         ])
         
-        # Assemble final prompt
-        system_prompt = RESPONSE_GENERATION_PROMPT.format(
+        # Get AP role-specific instructions
+        role_instructions = get_ap_role_instructions(speaker_role)
+        
+        # Determine team side from speaker role
+        team_side = "Government" if "Government" in speaker_role or speaker_role.endswith("(PM)") or speaker_role.endswith("(DPM)") else "Opposition"
+        if "Leader of Opposition" in speaker_role or speaker_role.endswith("(LO)") or speaker_role.endswith("(DLO)"):
+            team_side = "Opposition"
+        elif "Opposition Whip" in speaker_role:
+            team_side = "Opposition"
+        elif "Government" in speaker_role or "Whip" in speaker_role:
+            team_side = "Government" if "Government" in speaker_role else "Opposition"
+        
+        # Assemble final prompt with AP-specific template
+        system_prompt = AP_RESPONSE_GENERATION_PROMPT.format(
+            role_instructions=role_instructions,
             speaker_role=speaker_role,
+            team_side=team_side,
             personality=personality_trait or "balanced",
             clash_matrix=json.dumps(clash_matrix),
             evidence=evidence_text if evidence else "No specific evidence found."
@@ -293,7 +328,7 @@ class DebaterAgent:
                     db=db,
                     session_id=session_id,
                     agent_name="DebaterAgent:Phase4-ResponseGeneration",
-                    prompt_used=RESPONSE_GENERATION_PROMPT[:500],
+                    prompt_used=AP_RESPONSE_GENERATION_PROMPT[:500],
                     model_version="llama-3.1-8b-instant",
                     temperature=0.7,
                     raw_output=response.content[:1000]
