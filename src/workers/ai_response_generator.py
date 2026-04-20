@@ -87,6 +87,17 @@ async def generate_ai_response(
         speaker_role = current_speaker.role  # e.g., "Prime Minister (PM)", "Government Whip", etc.
         speaker_id = f"{match_id}:{state.current_turn_index}"
         speaker_side = current_speaker.side  # "Government" or "Opposition"
+        
+        # Fetch motion
+        db = SessionLocal()
+        try:
+            match_data = APMatchRepository.get_match_with_motion(db, match_id)
+            motion_text = match_data[1].motion_text if match_data and match_data[1] else "The motion under debate"
+        except Exception as e:
+            logger.error(f"Failed to fetch motion for match {match_id}: {e}")
+            motion_text = "The motion under debate"
+        finally:
+            db.close()
 
         # Reconstruct debate transcript from state history
         transcript = reconstruct_transcript(state)
@@ -116,8 +127,10 @@ async def generate_ai_response(
         # session_id is the DebateSession ID for logging all LLM calls
         response = await debater.orchestrate_debater_response(
             transcript=transcript,
+            motion=motion_text,
             speaker_role=speaker_role,  # Full AP role name
             speaker_id=speaker_id,
+            speaker_side=speaker_side,
             personality_trait="balanced",
             session_id=match_id,
             channel=channel

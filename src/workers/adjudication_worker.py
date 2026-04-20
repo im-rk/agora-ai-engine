@@ -97,15 +97,22 @@ async def run_adjudication_worker(
         else:
             speaker_scores_list = raw_speaker_scores  # already a flat list
 
+        fallback_pillar = {
+            "definition": "Unavailable",
+            "government_score": 0,
+            "opposition_score": 0,
+            "reasoning": "Unavailable"
+        }
+        
         result = AdjudicationResult(
             clashes=[MacroClash(**c) for c in result_dict.get("clashes", [])],
             wcm_matrix=[WCMEntry(**w) for w in result_dict.get("wcm_matrix", [])],
             net_logic_score=result_dict.get("net_logic_score", 0.0),
             pillar_breakdown=PillarBreakdown(
-                matter=PillarScore(**pillar_pillars["matter"]),
-                manner=PillarScore(**pillar_pillars["manner"]),
-                method=PillarScore(**pillar_pillars["method"]),
-                role=PillarScore(**pillar_pillars["role"]),
+                matter=PillarScore(**pillar_pillars.get("matter", fallback_pillar)),
+                manner=PillarScore(**pillar_pillars.get("manner", fallback_pillar)),
+                method=PillarScore(**pillar_pillars.get("method", fallback_pillar)),
+                role=PillarScore(**pillar_pillars.get("role", fallback_pillar)),
                 pillar_reasoning=pillar_data.get("pillar_reasoning", "")
             ),
             speaker_scores=[SpeakerScore(**s) for s in speaker_scores_list],
@@ -140,6 +147,11 @@ async def run_adjudication_worker(
             "event": "ADJUDICATION_COMPLETE",
             "match_id": match_id,
             "status": "completed",
+            "verdict": result.winning_team,
+            "gov_score": result.government_score,
+            "opp_score": result.opposition_score,
+            "summary": result.summary.dict()
+        }))
         
         logger.info(
             f"[ADJUDICATION WORKER] Final verdict published for {match_id}"

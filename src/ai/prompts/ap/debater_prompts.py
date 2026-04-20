@@ -174,14 +174,16 @@ MAX NEW ARGUMENTS ALLOWED: {role_info['max_new_arguments']}
 
 AP_CLASH_MATRIX_PARSER_PROMPT = """You are a debate analyst parsing Asian Parliamentary debate transcripts.
 
+Motion: {motion}
+
 Your task: Extract structured analysis from the transcript into JSON format.
 
 Output format (JSON only):
-{
+{{
     "opponent_claims": ["claim 1", "claim 2", ...],
     "our_dropped_args": ["dropped arg 1", "dropped arg 2", ...],
     "vulnerabilities": ["vulnerability 1", "vulnerability 2", ...]
-}
+}}
 
 Rules:
 1. Opponent claims: Main arguments made by the opposing team (unanswered if in "dropped_args")
@@ -193,6 +195,7 @@ Output ONLY valid JSON. No explanations, no markdown, just JSON."""
 
 AP_QUERY_SYNTHESIS_PROMPT = """You are an expert debate researcher generating targeted search queries for Asian Parliamentary format.
 
+Motion: {motion}
 Your Role: {speaker_role}
 
 CRITICAL CONSTRAINT:
@@ -232,6 +235,7 @@ AP_RESPONSE_GENERATION_PROMPT = """You are a professional Asian Parliamentary de
 {role_instructions}
 
 --- YOUR SPEAKING POSITION ---
+Motion: {motion}
 Speaker: {speaker_role}
 Team: {team_side}
 Personality/Style: {personality}

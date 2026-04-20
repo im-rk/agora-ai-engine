@@ -43,23 +43,23 @@ def store_adjudication_result(
         clash_table = adjudication_dict["clash_table"]
         speaker_scores = adjudication_dict["speaker_scores"]
         
-        # Update debates table (Supabase PostgreSQL)
+        # Update adjudication_results table (Supabase PostgreSQL)
         query = text("""
-            UPDATE debates
-            SET
-              verdict = :verdict,
-              gov_score = :gov_score,
-              opp_score = :opp_score,
-              clash_table = :clash_table,
-              speaker_scores = :speaker_scores,
-              adjudicated_at = NOW()
-            WHERE session_id = :session_id
+            INSERT INTO adjudication_results (id, session_id, winning_team, gov_total_score, opp_total_score, clash_table, speaker_scores, created_at)
+            VALUES (gen_random_uuid(), :session_id, :winning_team, :gov_total_score, :opp_total_score, :clash_table, :speaker_scores, NOW())
+            ON CONFLICT (session_id) DO UPDATE SET
+              winning_team = EXCLUDED.winning_team,
+              gov_total_score = EXCLUDED.gov_total_score,
+              opp_total_score = EXCLUDED.opp_total_score,
+              clash_table = EXCLUDED.clash_table,
+              speaker_scores = EXCLUDED.speaker_scores,
+              created_at = NOW()
         """)
         
         db.execute(query, {
-            "verdict": verdict,
-            "gov_score": gov_score,
-            "opp_score": opp_score,
+            "winning_team": verdict,
+            "gov_total_score": gov_score,
+            "opp_total_score": opp_score,
             "clash_table": json.dumps(clash_table),
             "speaker_scores": json.dumps(speaker_scores),
             "session_id": session_id
@@ -91,14 +91,14 @@ def get_adjudication_result(
     try:
         query = text("""
             SELECT
-              verdict,
-              gov_score,
-              opp_score,
+              winning_team,
+              gov_total_score,
+              opp_total_score,
               clash_table,
               speaker_scores,
-              adjudicated_at
-            FROM debates
-            WHERE session_id = :session_id AND verdict IS NOT NULL
+              created_at
+            FROM adjudication_results
+            WHERE session_id = :session_id
         """)
         
         result = db.execute(query, {"session_id": session_id}).fetchone()
@@ -110,8 +110,8 @@ def get_adjudication_result(
             "winning_team": result[0],
             "gov_total_score": result[1],
             "opp_total_score": result[2],
-            "clash_table": json.loads(result[3]) if result[3] else {},
-            "speaker_scores": json.loads(result[4]) if result[4] else [],
+            "clash_table": result[3] if isinstance(result[3], dict) else json.loads(result[3]) if result[3] else {},
+            "speaker_scores": result[4] if isinstance(result[4], list) else json.loads(result[4]) if result[4] else [],
             "adjudicated_at": result[5]
         }
         
@@ -143,19 +143,18 @@ def update_debate_with_adjudication(
     """
     try:
         query = text("""
-            UPDATE debates
-            SET
-              verdict = :verdict,
-              gov_score = :gov_score,
-              opp_score = :opp_score,
-              adjudicated_at = NOW()
-            WHERE session_id = :session_id
+            INSERT INTO adjudication_results (id, session_id, winning_team, gov_total_score, opp_total_score, clash_table, speaker_scores, created_at)
+            VALUES (gen_random_uuid(), :session_id, :winning_team, :gov_total_score, :opp_total_score, '{}', '[]', NOW())
+            ON CONFLICT (session_id) DO UPDATE SET
+              winning_team = EXCLUDED.winning_team,
+              gov_total_score = EXCLUDED.gov_total_score,
+              opp_total_score = EXCLUDED.opp_total_score
         """)
         
         db.execute(query, {
-            "verdict": verdict,
-            "gov_score": gov_score,
-            "opp_score": opp_score,
+            "winning_team": verdict,
+            "gov_total_score": gov_score,
+            "opp_total_score": opp_score,
             "session_id": session_id
         })
         
@@ -188,13 +187,13 @@ def get_debates_by_verdict(
         query = text("""
             SELECT
               session_id,
-              verdict,
-              gov_score,
-              opp_score,
-              adjudicated_at
-            FROM debates
-            WHERE verdict = :verdict
-            ORDER BY adjudicated_at DESC
+              winning_team as verdict,
+              gov_total_score as gov_score,
+              opp_total_score as opp_score,
+              created_at as adjudicated_at
+            FROM adjudication_results
+            WHERE winning_team = :verdict
+            ORDER BY created_at DESC
             LIMIT :limit
         """)
         

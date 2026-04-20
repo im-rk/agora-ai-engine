@@ -20,18 +20,18 @@ Debate transcript:
 {transcript}
 
 Output format (JSON only):
-{
+{{
     "clashes": [
-        {
+        {{
             "id": 1,
             "theme": "The Economic Impact Clash",
             "description": "Did the resolution's policy improve or harm the economy?",
             "government_position": "Brief summary",
             "opposition_position": "Brief summary"
-        },
+        }},
         ... (3-5 total)
     ]
-}
+}}
 
 Rules:
 1. Clashes must be THEMATIC, not specific arguments
@@ -61,9 +61,9 @@ Debate transcript:
 {transcript}
 
 Output format (JSON only):
-{
+{{
     "wcm_matrix": [
-        {
+        {{
             "clash_id": 1,
             "clash_theme": "The Economic Impact Clash",
             "weight": 4,
@@ -71,11 +71,11 @@ Output format (JSON only):
             "delta": 1,
             "delta_reasoning": "Government provided stronger economic evidence",
             "weighted_score": 4  // = weight * delta
-        },
+        }},
         ... (one per clash)
     ],
     "net_logic_score": 5  // SUM of all weighted_scores
-}
+}}
 
 Rules:
 1. Weight must be 1-5 (integer)
@@ -104,35 +104,35 @@ Speaker breakdown (roles and number of turns):
 {speaker_info}
 
 Output format (JSON only):
-{
-    "pillars": {
-        "matter": {
+{{
+    "pillars": {{
+        "matter": {{
             "definition": "Logic: Won the mathematical WCM",
-            "government_score": 25,  // 0-25 points
+            "government_score": 25,
             "opposition_score": 20,
             "reasoning": "Government won key clashes 4-3 on WCM"
-        },
-        "manner": {
+        }},
+        "manner": {{
             "definition": "Delivery: Persuasive and natural speaking",
-            "government_score": 20,  // 0-25 points
+            "government_score": 20,
             "opposition_score": 18,
             "reasoning": "Government speakers more authoritative, Opposition slightly defensive"
-        },
-        "method": {
+        }},
+        "method": {{
             "definition": "Structure: Organized case with clear impacts",
-            "government_score": 18,  // 0-25 points
+            "government_score": 18,
             "opposition_score": 22,
             "reasoning": "Opposition had tighter case structure, Government more scattered"
-        },
-        "role": {
+        }},
+        "role": {{
             "definition": "Role: Fulfilled speaker responsibilities",
-            "government_score": 12,  // 0-25 points
+            "government_score": 12,
             "opposition_score": 15,
             "reasoning": "Both followed convention, Opposition managed time better"
-        }
-    },
+        }}
+    }},
     "pillar_reasoning": "Although Government won the WCM (Matter), Opposition's superior Method and Role adherence made it competitive"
-}
+}}
 
 Rules:
 1. Matter score: Award points based on NET_LOGIC_SCORE (winning team gets 20-25, losing gets 10-20)
@@ -162,22 +162,21 @@ For EACH speaker, assign a score (0-100) based on:
 - Persona fit (did they stay in character?)
 
 Output format (JSON only):
-{
+{{
     "speaker_scores": [
-        {
+        {{
             "role": "Prime Minister",
             "side": "Government",
             "score": 78,
-            "argument_quality": 8,     // 0-10
-            "evidence_usage": 7,       // 0-10
-            "responsiveness": 8,       // 0-10
-            "structure": 8,            // 0-10
-            "persona": 9,              // 0-10
+            "argument_quality": 8,
+            "evidence_usage": 7,
+            "responsiveness": 8,
+            "structure": 8,
+            "persona": 9,
             "feedback": "Strong opening, good evidence, but missed key Opposition point on impact"
-        },
-        ... (one per speaker)
+        }}
     ]
-}
+}}
 
 Rules:
 1. Final score = (argument + evidence + responsiveness + structure + persona) * 2
@@ -201,9 +200,9 @@ Write a brief (150-200 word) adjudication statement explaining:
 This will be read by the user. Be fair, constructive, and clear.
 
 Format:
-{
+{{
     "adjudication": "Detailed statement here...",
     "key_decision_1": "Theme and explanation",
     "key_decision_2": "Theme and explanation",
     "key_decision_3": "Theme and explanation"
-}"""
+}}"""

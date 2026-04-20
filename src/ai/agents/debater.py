@@ -64,7 +64,7 @@ class DebaterAgent:
         self.redis_client = redis_client or get_redis_async()
         self.rag_engine = rag_engine or RAGEngine()
 
-    async def phase1_parse_clash_matrix(self, transcript: str, session_id: Optional[str] = None) -> dict:
+    async def phase1_parse_clash_matrix(self, transcript: str, motion: str, session_id: Optional[str] = None) -> dict:
         """
         Phase 1: State Tracking - Parse transcript into clash matrix.
         
@@ -83,7 +83,7 @@ class DebaterAgent:
         llm = get_groq_client(streaming=False, temperature=0.1)
 
         prompt = [
-            SystemMessage(content=AP_CLASH_MATRIX_PARSER_PROMPT),
+            SystemMessage(content=AP_CLASH_MATRIX_PARSER_PROMPT.format(motion=motion)),
             HumanMessage(content=f"Parse this transcript:\n\n{transcript}")
         ]
 
@@ -122,6 +122,7 @@ class DebaterAgent:
     async def phase2_generate_search_queries(
         self, 
         clash_matrix: dict,
+        motion: str,
         speaker_role: str,
         session_id: Optional[str] = None
     ) -> list[str]:
@@ -153,6 +154,7 @@ class DebaterAgent:
         # Use AP-specific query synthesis prompt
         prompt = [
             SystemMessage(content=AP_QUERY_SYNTHESIS_PROMPT.format(
+                motion=motion,
                 speaker_role=speaker_role,
                 role_constraint=role_constraint
             )),
@@ -192,6 +194,8 @@ class DebaterAgent:
     async def phase3_retrieve_and_rerank(
         self, 
         queries: list[str],
+        match_id: str,
+        side: str,
         top_k: int = 3
     ) -> list[dict]:
         """
@@ -202,6 +206,8 @@ class DebaterAgent:
         
         Args:
             queries: List of search queries from Phase 2
+            match_id: Debate session ID
+            side: Team side ("Government" or "Opposition")
             top_k: Number of final evidence pieces to return
             
         Returns:
@@ -213,6 +219,8 @@ class DebaterAgent:
             # Hit pgvector for each query
             results = await self.rag_engine.aretrieve_counter_arguments(
                 topic=query,
+                match_id=match_id,
+                side=side,
                 k=5  # Get top 5 per query
             )
             all_results.extend(results)
@@ -240,6 +248,7 @@ class DebaterAgent:
     async def phase4_generate_response_streaming(
         self,
         clash_matrix: dict,
+        motion: str,
         speaker_role: str,
         evidence: list[dict],
         speaker_id: str,
@@ -302,6 +311,7 @@ class DebaterAgent:
         # Assemble final prompt with AP-specific template
         system_prompt = AP_RESPONSE_GENERATION_PROMPT.format(
             role_instructions=role_instructions,
+            motion=motion,
             speaker_role=speaker_role,
             team_side=team_side,
             personality=personality_trait or "balanced",
@@ -344,8 +354,10 @@ class DebaterAgent:
     async def orchestrate_debater_response(
         self,
         transcript: str,
+        motion: str,
         speaker_role: str,
         speaker_id: str,
+        speaker_side: str,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None,
         channel: Optional[str] = None
@@ -370,17 +382,23 @@ class DebaterAgent:
             Complete debate response string with tokens published to Redis
         """
         # Phase 1: State Tracking
-        clash_matrix = await self.phase1_parse_clash_matrix(transcript, session_id)
+        clash_matrix = await self.phase1_parse_clash_matrix(transcript, motion, session_id)
         
         # Phase 2: Query Synthesis
-        queries = await self.phase2_generate_search_queries(clash_matrix, speaker_role, session_id)
+        queries = await self.phase2_generate_search_queries(clash_matrix, motion, speaker_role, session_id)
         
         # Phase 3: Retrieve & Re-Rank
-        evidence = await self.phase3_retrieve_and_rerank(queries, top_k=3)
+        evidence = await self.phase3_retrieve_and_rerank(
+            queries=queries, 
+            match_id=session_id, 
+            side=speaker_side, 
+            top_k=3
+        )
         
         # Phase 4: Generation with Streaming
         response = await self.phase4_generate_response_streaming(
             clash_matrix=clash_matrix,
+            motion=motion,
             speaker_role=speaker_role,
             evidence=evidence,
             speaker_id=speaker_id,
