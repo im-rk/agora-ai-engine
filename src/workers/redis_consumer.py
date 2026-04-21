@@ -156,8 +156,11 @@ async def start_redis_consumer():
 
                             if previous_speaker.player_type == "human":
                                 logger.info(
-                                    f"[CONSUMER] Previous turn was HUMAN ({previous_speaker.role}). "
-                                    f"Persisting to Supabase..."
+                                    f"[CONSUMER] Previous speaker ({previous_turn_index}): "
+                                    f"{previous_speaker.role} (Human)"
+                                )
+                                logger.info(
+                                    f"[CONSUMER] Persisting HUMAN turn to database..."
                                 )
 
                                 # Go has already:
@@ -173,12 +176,22 @@ async def start_redis_consumer():
                                     state=state
                                 )
 
-                                if not persist_success:
+                                if persist_success:
+                                    logger.info(
+                                        f"[CONSUMER] Human turn persisted successfully "
+                                        f"for {previous_speaker.role}"
+                                    )
+                                else:
                                     logger.error(
                                         f"[CONSUMER] Failed to persist human turn for "
-                                        f"match {match_id}"
+                                        f"match {match_id} ({previous_speaker.role})"
                                     )
                                     # Continue anyway - don't block the debate
+                            else:
+                                logger.debug(
+                                    f"[CONSUMER] Previous speaker ({previous_turn_index}): "
+                                    f"{previous_speaker.role} (AI - skip persistence)"
+                                )
 
                     # Check if debate is complete
                     if state.current_turn_index >= len(state.schedule):

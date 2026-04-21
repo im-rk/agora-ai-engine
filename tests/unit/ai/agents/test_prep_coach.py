@@ -135,4 +135,4 @@ def test_generate_case_prep():
     assert updated.evidence is not None
     assert len(updated.evidence) > 0
 
-    print("✅ Prep Coach Test Passed")
+    print("Prep Coach Test Passed")
