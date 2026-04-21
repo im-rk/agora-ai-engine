@@ -230,7 +230,7 @@ class APMatchService:
                     motion=m.motion.motion_text[:100] + "..." if len(m.motion.motion_text) > 100 else m.motion.motion_text,
                     status=self._map_match_status(m.status),
                     your_role=APRole(m.human_role),
-                    your_side=DebateSide(m.case_prep.side.lower()),
+                    your_side=DebateSide(m.case_prep.side.lower()) if m.case_prep else DebateSide.GOVERNMENT,
                     created_at=m.started_at,
                     started_at=m.started_at,
                     ended_at=m.ended_at
