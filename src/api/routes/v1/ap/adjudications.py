@@ -173,22 +173,46 @@ async def get_ap_adjudication_status(match_id: str):
         db.close()
 
 
-@router.get("/matches/{match_id}/adjudication", response_model=Optional[AdjudicationResult])
+@router.get("/matches/{match_id}/adjudication")
 async def get_ap_adjudication(match_id: str):
     """
     GET /api/v1/ap/matches/{match_id}/adjudication
     
     Retrieve full cached adjudication result for a match.
     
-    Use /status to check if ready, then call this for full details.
+    Unpacks the flat database row (clash_table JSON blob) into the
+    full nested structure the frontend expects:
+      { clashes, wcm_matrix, pillar_breakdown, speaker_scores,
+        summary, net_logic_score, winning_team, ... }
     
     Returns:
-        Complete AdjudicationResult if found, null otherwise
+        Full adjudication result dict if found, null otherwise
     """
     db = SessionLocal()
     try:
-        result = get_adjudication_result(db, match_id)
-        return result
+        row = get_adjudication_result(db, match_id)
+        if row is None:
+            return None
+        
+        # The database stores the rich data inside a "clash_table" JSON blob
+        clash_table = row.get("clash_table", {})
+        
+        # Build the full response shape the frontend expects
+        response = {
+            "clashes": clash_table.get("clashes", []),
+            "wcm_matrix": clash_table.get("wcm_matrix", []),
+            "net_logic_score": clash_table.get("net_logic_score", 0.0),
+            "pillar_breakdown": clash_table.get("pillar_breakdown", {}),
+            "summary": clash_table.get("summary", {}),
+            "speaker_scores": row.get("speaker_scores", []),
+            "winning_team": row.get("winning_team", "Unknown"),
+            "gov_total_score": row.get("gov_total_score", 0),
+            "opp_total_score": row.get("opp_total_score", 0),
+            "adjudicated_at": str(row.get("adjudicated_at", "")),
+            "session_id": match_id,
+        }
+        
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
     finally:

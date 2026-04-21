@@ -237,7 +237,7 @@ class BPMatchService:
                     motion=m.motion.motion_text[:100] + "..." if len(m.motion.motion_text) > 100 else m.motion.motion_text,
                     status=self._map_match_status(m.status),
                     your_role=BPRole(m.human_role),
-                    your_team=self._side_to_team(m.case_prep.side.lower(), m.human_role),
+                    your_team=self._side_to_team(m.case_prep.side.lower() if m.case_prep else "government", m.human_role),
                     created_at=m.started_at,
                     started_at=m.started_at,
                     ended_at=m.ended_at

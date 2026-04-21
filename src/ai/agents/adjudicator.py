@@ -210,7 +210,15 @@ class AdjudicatorAgent:
         
         # Parse JSON response
         try:
-            result = json.loads(response.content)
+            content = response.content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            
+            result = json.loads(content.strip())
             wcm_clashes = []
             for item in result.get("wcm_matrix", []):
                 wcm_clashes.append(WCMClash(
@@ -225,8 +233,8 @@ class AdjudicatorAgent:
             
             net_logic_score = float(result.get("net_logic_score", 0))
             return wcm_clashes, net_logic_score
-        except json.JSONDecodeError:
-            print("[ERROR] Failed to parse WCM JSON")
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Failed to parse WCM JSON: {e}")
             return [], 0.0
 
     async def phase3_analyze_wudc_pillars(
@@ -304,10 +312,19 @@ class AdjudicatorAgent:
         
         # Parse JSON response
         try:
-            result = json.loads(response.content)
+            content = response.content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            
+            result = json.loads(content.strip(), strict=False)
             return result
-        except json.JSONDecodeError:
-            print("[ERROR] Failed to parse WUDC pillars JSON")
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Failed to parse WUDC pillars JSON: {e}")
+            print(f"Raw response: {response.content}")
             return {}
 
     async def phase4_grade_speakers(
@@ -357,7 +374,8 @@ class AdjudicatorAgent:
                 format=debate_format,
                 speaker_roles=json.dumps(speaker_roles),
                 clashes=clashes_json,
-                pillar_scores=json.dumps(pillar_scores, indent=2)
+                pillar_scores=json.dumps(pillar_scores, indent=2),
+                transcript=transcript
             )),
             HumanMessage(content="Grade each speaker on their individual performance.")
         ]
@@ -385,10 +403,18 @@ class AdjudicatorAgent:
         
         # Parse JSON response
         try:
-            result = json.loads(response.content)
+            content = response.content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+                
+            result = json.loads(content.strip(), strict=False)
             return result
-        except json.JSONDecodeError:
-            print("[ERROR] Failed to parse speaker scores JSON")
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Failed to parse speaker scores JSON: {e}")
             return {}
 
     async def phase5_generate_summary(
@@ -450,10 +476,18 @@ class AdjudicatorAgent:
         
         # Parse JSON response
         try:
-            result = json.loads(response.content)
+            content = response.content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+                
+            result = json.loads(content.strip(), strict=False)
             return result
-        except json.JSONDecodeError:
-            print("[ERROR] Failed to parse summary JSON")
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Failed to parse summary JSON: {e}")
             return {}
 
     async def orchestrate_adjudication(
