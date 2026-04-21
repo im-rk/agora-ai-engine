@@ -32,18 +32,18 @@ async def lifespan(app: FastAPI):
     Shutdown:
     - Cancel Redis consumer
     """
-    logger.info("🚀 Starting Agora AI Debate Engine...")
+    logger.info("Starting Agora AI Debate Engine...")
     
     # Start background worker
     worker_task = asyncio.create_task(start_redis_consumer())
     
-    logger.info("✅ Application started successfully")
+    logger.info("Application started successfully")
     
     yield
     
-    logger.info("🛑 Shutting down...")
+    logger.info("Shutting down...")
     worker_task.cancel()
-    logger.info("✅ Application shut down")
+    logger.info("Application shut down")
 
 
 # Create FastAPI app

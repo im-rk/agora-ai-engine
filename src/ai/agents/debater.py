@@ -40,6 +40,7 @@ from src.ai.prompts.debater_prompts import (
 from src.ai.prompts.ap import (
     AP_ROLE_CONSTRAINTS,
     get_ap_role_instructions,
+    normalize_ap_role,
     AP_CLASH_MATRIX_PARSER_PROMPT,
     AP_QUERY_SYNTHESIS_PROMPT,
     AP_RESPONSE_GENERATION_PROMPT,
@@ -143,20 +144,33 @@ class DebaterAgent:
         """
         llm = get_groq_client(streaming=False, temperature=0.3)
         
+        # Normalize role name for constraint lookup (state.schedule uses short names like "Prime Minister")
+        normalized_role = normalize_ap_role(speaker_role)
+        
         # Extract role constraint for query synthesis (AP-specific)
         role_constraint = ""
-        if speaker_role in AP_ROLE_CONSTRAINTS:
-            role_info = AP_ROLE_CONSTRAINTS[speaker_role]
+        if normalized_role in AP_ROLE_CONSTRAINTS:
+            role_info = AP_ROLE_CONSTRAINTS[normalized_role]
             role_constraint = f"CONSTRAINT: {role_info['constraint']}\nFOCUS: {role_info['focus']}"
         else:
             role_constraint = f"Role: {speaker_role} - Advance your team's position with evidence"
+
+        # Determine team position based on normalized role
+        team_side = "Government" if "Government" in normalized_role or normalized_role.endswith("(PM)") or normalized_role.endswith("(DPM)") else "Opposition"
+        if "Leader of Opposition" in normalized_role or normalized_role.endswith("(LO)") or normalized_role.endswith("(DLO)"):
+            team_side = "Opposition"
+        elif "Opposition Whip" in normalized_role:
+            team_side = "Opposition"
+        
+        team_position = "You AFFIRM this motion (support it)" if team_side == "Government" else "You NEGATE this motion (oppose it)"
 
         # Use AP-specific query synthesis prompt
         prompt = [
             SystemMessage(content=AP_QUERY_SYNTHESIS_PROMPT.format(
                 motion=motion,
-                speaker_role=speaker_role,
-                role_constraint=role_constraint
+                speaker_role=normalized_role,
+                role_constraint=role_constraint,
+                team_position=team_position
             )),
             HumanMessage(content=f"Generate search queries for:\n{json.dumps(clash_matrix, indent=2)}")
         ]
@@ -296,23 +310,26 @@ class DebaterAgent:
             for i, e in enumerate(evidence[:3])
         ])
         
-        # Get AP role-specific instructions
-        role_instructions = get_ap_role_instructions(speaker_role)
+        # Normalize role name for constraint lookup
+        normalized_role = normalize_ap_role(speaker_role)
         
-        # Determine team side from speaker role
-        team_side = "Government" if "Government" in speaker_role or speaker_role.endswith("(PM)") or speaker_role.endswith("(DPM)") else "Opposition"
-        if "Leader of Opposition" in speaker_role or speaker_role.endswith("(LO)") or speaker_role.endswith("(DLO)"):
-            team_side = "Opposition"
-        elif "Opposition Whip" in speaker_role:
-            team_side = "Opposition"
-        elif "Government" in speaker_role or "Whip" in speaker_role:
-            team_side = "Government" if "Government" in speaker_role else "Opposition"
+        # Get AP role-specific instructions using normalized role
+        role_instructions = get_ap_role_instructions(normalized_role)
         
-        # Assemble final prompt with AP-specific template
+        # Determine team side from normalized role
+        team_side = "Government" if "Government" in normalized_role or normalized_role.endswith("(PM)") or normalized_role.endswith("(DPM)") else "Opposition"
+        if "Leader of Opposition" in normalized_role or normalized_role.endswith("(LO)") or normalized_role.endswith("(DLO)"):
+            team_side = "Opposition"
+        elif "Opposition Whip" in normalized_role:
+            team_side = "Opposition"
+        elif "Government" in normalized_role or "Whip" in normalized_role:
+            team_side = "Government" if "Government" in normalized_role else "Opposition"
+        
+        # Assemble final prompt with AP-specific template (use normalized role in prompt)
         system_prompt = AP_RESPONSE_GENERATION_PROMPT.format(
             role_instructions=role_instructions,
             motion=motion,
-            speaker_role=speaker_role,
+            speaker_role=normalized_role,
             team_side=team_side,
             personality=personality_trait or "balanced",
             clash_matrix=json.dumps(clash_matrix),

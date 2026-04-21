@@ -62,19 +62,9 @@ async def generate_ai_response(
 
     Raises:
         Logs exceptions to logger, does not raise
-
-    Example:
-        >>> response = await generate_ai_response(
-        ...     client=redis_client,
-        ...     channel="debate:match-123:turns",
-        ...     match_id="match-123",
-        ...     state=live_state
-        ... )
-        >>> print(f"Generated: {response[:50]}...")
     """
     db = None
     try:
-        # VALIDATION: Ensure state is valid before proceeding
         if not state.schedule or state.current_turn_index >= len(state.schedule):
             logger.error(
                 f"Invalid state for match {match_id}: "
@@ -82,13 +72,11 @@ async def generate_ai_response(
             )
             return None
 
-        # PREPARATION: Extract speaker info and context
         current_speaker = state.schedule[state.current_turn_index]
-        speaker_role = current_speaker.role  # e.g., "Prime Minister (PM)", "Government Whip", etc.
+        speaker_role = current_speaker.role 
         speaker_id = f"{match_id}:{state.current_turn_index}"
-        speaker_side = current_speaker.side  # "Government" or "Opposition"
+        speaker_side = current_speaker.side  
         
-        # Fetch motion
         db = SessionLocal()
         try:
             match_data = APMatchRepository.get_match_with_motion(db, match_id)
@@ -99,7 +87,6 @@ async def generate_ai_response(
         finally:
             db.close()
 
-        # Reconstruct debate transcript from state history
         transcript = reconstruct_transcript(state)
 
         logger.info(
@@ -108,23 +95,17 @@ async def generate_ai_response(
         )
         logger.debug(f"[AI] Transcript length: {len(transcript)} chars")
 
-        # PHASE 1-4: Orchestrate AI Response Generation
-        # Initialize debater agent for this turn
         debater = DebaterAgent(redis_client=client)
 
-        # Announce to the frontend who is speaking RIGHT NOW
-        # This switches the UI from "Waiting..." to the active speaker display
         await client.publish(channel, json.dumps({
             "event": "TURN_STARTED",
             "speaker": "ai",
-            "role": speaker_role,  # Full role name with side
+            "role": speaker_role,  
             "side": speaker_side,
             "turn_index": state.current_turn_index,
         }))
         logger.info(f"[AI] Published TURN_STARTED for {speaker_role} on {channel}")
 
-        # Execute 4-phase orchestration (streaming to Redis)
-        # session_id is the DebateSession ID for logging all LLM calls
         response = await debater.orchestrate_debater_response(
             transcript=transcript,
             motion=motion_text,
@@ -147,7 +128,6 @@ async def generate_ai_response(
             "player_type": "ai"
         }
 
-        # Append to transcript (in-memory state)
         if not hasattr(state, 'transcript'):
             state.transcript = []
         state.transcript.append(turn_data)
@@ -176,9 +156,7 @@ async def generate_ai_response(
         db.commit()   # Makes the turn record permanent in the database
         logger.debug(f"[AI] Turn record committed to database: {turn.id}")
 
-        # CRITICAL: Advance the turn index so the debate continues.
-        # (For human turns, the Go gateway does this when END_TURN is clicked.
-        #  For AI turns, Python must do it here after generation is complete.)
+       
         state.current_turn_index += 1
         await state_manager.update_state(state)
         logger.info(
@@ -186,7 +164,6 @@ async def generate_ai_response(
             f"(of {len(state.schedule)} total turns)"
         )
 
-        # Publish TURN_CHANGED so redis_consumer decides who speaks next
         await client.publish(channel, json.dumps({
             "action": "TURN_CHANGED",
         }))
@@ -230,6 +207,14 @@ async def persist_human_turn(
     3. Add to transcript array in Redis state
     4. Clean up temporary Redis key
 
+    Database Table: turns
+    - session_id (match_id)
+    - turn_number (sequence)
+    - speaker_role (e.g., "Prime Minister")
+    - speaker_type: "Human" (STORED HERE)
+    - transcript_text: VOICE TRANSCRIPT (STORED HERE)
+    - duration_seconds
+
     Args:
         client: Redis async client
         match_id: Unique match identifier
@@ -237,70 +222,91 @@ async def persist_human_turn(
 
     Returns:
         bool: True if successfully persisted, False on error
-
-    Example:
-        >>> success = await persist_human_turn(redis_client, "match-123", state)
-        >>> if success:
-        ...     logger.info("Human speech saved!")
     """
     db = None
     try:
+        logger.info(f"[HUMAN] Starting human turn persistence for match {match_id}")
+        logger.debug(f"[HUMAN] Current turn index: {state.current_turn_index}")
+        
         if state.current_turn_index == 0:
             logger.debug(
-                f"[HUMAN] No previous turn for match {match_id} (first turn)"
+                f"[HUMAN] No previous turn for match {match_id} (first turn is current)"
             )
             return True
 
-        # Get the PREVIOUS speaker (human who just finished)
         previous_turn_index = state.current_turn_index - 1
+        
+        logger.debug(
+            f"[HUMAN] Looking for previous speaker at index {previous_turn_index} "
+            f"(schedule length: {len(state.schedule)})"
+        )
+        
         if previous_turn_index >= len(state.schedule):
             logger.warning(
                 f"[HUMAN] Previous turn index {previous_turn_index} out of bounds "
-                f"for match {match_id}"
+                f"for match {match_id} (schedule length: {len(state.schedule)})"
             )
             return False
 
         previous_speaker = state.schedule[previous_turn_index]
+        logger.info(
+            f"[HUMAN] Previous speaker: {previous_speaker.role} "
+            f"(player_type: {previous_speaker.player_type})"
+        )
 
-        # RETRIEVE: Get human transcript from Redis
-        # Go stored final combined text here
         human_transcript_key = (
             f"debate:{match_id}:human_transcript:{previous_turn_index}"
         )
+        logger.debug(f"[HUMAN] Fetching transcript from Redis key: {human_transcript_key}")
+        
         human_text = await client.get(human_transcript_key)
 
         if not human_text:
             logger.warning(
-                f"[HUMAN] No transcript found in Redis key: {human_transcript_key}"
+                f"[HUMAN] No transcript found in Redis: {human_transcript_key} "
+                f"(Key may have expired or not been set by Go)"
             )
             return False
 
         logger.info(
-            f"[HUMAN] Retrieved human transcript ({len(human_text)} chars) "
-            f"for {previous_speaker.role}"
+            f"[HUMAN] Retrieved transcript ({len(human_text)} chars) for {previous_speaker.role}"
         )
 
-        # PERSIST: Save to Supabase database (ONE write per turn)
+        logger.debug(f"[HUMAN] Creating database session...")
         db = SessionLocal()
+        
+        logger.debug(
+            f"[HUMAN] Saving turn to turns table:\n"
+            f"  - session_id: {match_id}\n"
+            f"  - turn_number: {previous_turn_index}\n"
+            f"  - speaker_role: {previous_speaker.role}\n"
+            f"  - speaker_type: Human\n"
+            f"  - transcript_length: {len(human_text)} chars"
+        )
+        
         turn = APMatchRepository.create_turn(
             db=db,
             session_id=match_id,
             turn_number=previous_turn_index,
             speaker_role=previous_speaker.role,
-            speaker_type=SpeakerType.HUMAN.value,
-            transcript_text=human_text,
+            speaker_type=SpeakerType.HUMAN.value,  # "Human"
+            transcript_text=human_text,  # VOICE TRANSCRIPT STORED HERE
             duration_seconds=0  # Can be updated by Go if timing data available
         )
+        
         logger.info(
-            f"[HUMAN] Created turn record in Supabase: {turn.id} "
-            f"({previous_speaker.role})"
+            f"[HUMAN] SAVED to turns table:\n"
+            f"  - Turn ID: {turn.id}\n"
+            f"  - Role: {previous_speaker.role}\n"
+            f"  - Type: Human\n"
+            f"  - Match: {match_id}"
         )
 
         db.commit()
-        logger.debug(f"[HUMAN] Committed to database: {turn.id}")
+        logger.debug(f"[HUMAN] Database committed: {turn.id}")
 
-        # STATE: Update transcript array in Redis state
-        # Add to in-memory state so full transcript is available
+        logger.debug(f"[HUMAN] Updating Redis state transcript array...")
+        
         if not hasattr(state, 'transcript'):
             state.transcript = []
 
@@ -311,28 +317,36 @@ async def persist_human_turn(
             "player_type": "human"
         })
 
-        # Update Redis state
         await state_manager.update_state(state)
-        logger.debug(
-            f"[HUMAN] Updated Redis state. Total turns in transcript: "
-            f"{len(state.transcript)}"
+        logger.info(
+            f"[HUMAN] Updated Redis state: {len(state.transcript)} total turns in transcript"
         )
 
-        # CLEANUP: Remove temporary Redis key
-        await client.delete(human_transcript_key)
-        logger.debug(f"[HUMAN] Cleaned up Redis key: {human_transcript_key}")
+        logger.debug(f"[HUMAN] Cleaning up temporary Redis key...")
+        deleted = await client.delete(human_transcript_key)
+        logger.debug(f"[HUMAN] Cleaned up Redis key (deleted: {deleted})")
 
+        logger.info(
+            f"[HUMAN] HUMAN TURN PERSISTENCE COMPLETE\n"
+            f"  - Stored in turns table (ID: {turn.id})\n"
+            f"  - Updated Redis state\n"
+            f"  - Cleaned up temporary keys"
+        )
         return True
 
     except Exception as e:
-        logger.exception(
-            f"[HUMAN] Error persisting human turn for match {match_id}: {e}"
+        logger.error(
+            f"[HUMAN] FAILED to persist human turn for match {match_id}"
         )
+        logger.exception(f"[HUMAN] Exception details: {e}")
+        if db:
+            db.rollback()
         return False
 
     finally:
         if db:
             db.close()
+            logger.debug(f"[HUMAN] Database session closed")
 
 
 # async def handle_poi_response(
