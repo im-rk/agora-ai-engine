@@ -2,7 +2,7 @@
 
 Comprehensive testing and validation scripts for the Agora AI debate engine.
 
-## 📋 Script Categories
+## Script Categories
 
 ### 1. AP Architecture Validation Scripts
 Validate the Asian Parliamentary (AP) debate engine implementation:
