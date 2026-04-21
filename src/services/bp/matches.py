@@ -231,19 +231,27 @@ class BPMatchService:
             
             total = count_query.scalar() or 0
             
-            items = [
-                MatchListItem(
+            items = []
+            for m in matches_db:
+                # Safely fallback if case_prep is missing
+                side_str = m.case_prep.side.lower() if m.case_prep else "government"
+                
+                # Safely parse role, falling back to a default if corrupted row exists
+                try:
+                    your_role = BPRole(m.human_role)
+                except ValueError:
+                    your_role = BPRole.PRIME_MINISTER if side_str == "government" else BPRole.LEADER_OF_OPPOSITION
+
+                items.append(MatchListItem(
                     id=str(m.id),
                     motion=m.motion.motion_text[:100] + "..." if len(m.motion.motion_text) > 100 else m.motion.motion_text,
                     status=self._map_match_status(m.status),
-                    your_role=BPRole(m.human_role),
-                    your_team=self._side_to_team(m.case_prep.side.lower() if m.case_prep else "government", m.human_role),
+                    your_role=your_role,
+                    your_team=self._side_to_team(side_str, your_role.value),
                     created_at=m.started_at,
                     started_at=m.started_at,
                     ended_at=m.ended_at
-                )
-                for m in matches_db
-            ]
+                ))
             
             return {
                 "matches": items,

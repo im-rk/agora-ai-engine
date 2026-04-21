@@ -65,6 +65,14 @@ def store_adjudication_result(
             "session_id": session_id
         })
         
+        # ALSO update the debate_sessions table status
+        status_query = text("""
+            UPDATE debate_sessions 
+            SET status = 'FINISHED', ended_at = NOW() 
+            WHERE id = :session_id
+        """)
+        db.execute(status_query, {"session_id": session_id})
+        
         db.commit()
         return True
         
