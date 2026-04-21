@@ -168,6 +168,35 @@ MAX NEW ARGUMENTS ALLOWED: {role_info['max_new_arguments']}
     return instructions
 
 
+def normalize_ap_role(role: str) -> str:
+    """
+    Converts role names from state.schedule format to AP_ROLE_CONSTRAINTS format.
+    
+    Mapping:
+    - "Prime Minister" -> "Prime Minister (PM)"
+    - "Leader of Opposition" -> "Leader of Opposition (LO)"
+    - "Deputy Prime Minister" -> "Deputy Prime Minister (DPM)"
+    - "Deputy Leader of Opposition" -> "Deputy Leader of Opposition (DLO)"
+    - "Government Whip" -> "Government Whip"
+    - "Opposition Whip" -> "Opposition Whip"
+    
+    Args:
+        role: Role name from state.schedule
+        
+    Returns:
+        Normalized role name matching AP_ROLE_CONSTRAINTS keys
+    """
+    role_mapping = {
+        "Prime Minister": "Prime Minister (PM)",
+        "Leader of Opposition": "Leader of Opposition (LO)",
+        "Deputy Prime Minister": "Deputy Prime Minister (DPM)",
+        "Deputy Leader of Opposition": "Deputy Leader of Opposition (DLO)",
+        "Government Whip": "Government Whip",
+        "Opposition Whip": "Opposition Whip",
+    }
+    return role_mapping.get(role, role)  # Return original if not found
+
+
 # ============================================================================
 # AP PHASE-SPECIFIC PROMPTS
 # ============================================================================
@@ -198,12 +227,15 @@ AP_QUERY_SYNTHESIS_PROMPT = """You are an expert debate researcher generating ta
 Motion: {motion}
 Your Role: {speaker_role}
 
+YOUR TEAM POSITION (MANDATORY):
+{team_position}
+
 CRITICAL CONSTRAINT:
 {role_constraint}
 
 Your Task: Generate 3-5 highly specific search queries to find evidence that:
 - Directly addresses the debate's key clashes
-- Supports YOUR team's position
+- Supports YOUR team's position on the motion
 - Anticipates or counters opponent arguments
 
 For WHIPS (Rebuttal Speakers): Focus queries on REBUTTING opponent claims and finding comparative impact data
@@ -234,10 +266,17 @@ AP_RESPONSE_GENERATION_PROMPT = """You are a professional Asian Parliamentary de
 
 {role_instructions}
 
---- YOUR SPEAKING POSITION ---
+--- CRITICAL: YOUR POSITION ON THE MOTION ---
 Motion: {motion}
-Speaker: {speaker_role}
 Team: {team_side}
+
+Your Stance (MANDATORY):
+- If Government: You AFFIRM this motion (support and defend it as true/right/good)
+- If Opposition: You NEGATE this motion (oppose and attack it as false/wrong/bad)
+- DO NOT contradict your team's position on the motion
+
+--- YOUR SPEAKING POSITION ---
+Speaker: {speaker_role}
 Personality/Style: {personality}
 
 --- THE DEBATE STATE (Clashes so far) ---
@@ -262,19 +301,21 @@ Personality/Style: {personality}
 - Remember: AP debates move FAST - be concise and punchy
 
 --- CRITICAL CONSTRAINTS ---
-✓ REMEMBER YOUR ROLE - follow the instructions above strictly
-✓ If you're a WHIP: NO new content. Only rebut. Weigh clashes.
-✓ If you're DPM/DLO: Stay within your team's framework
-✓ If you're PM/LO: Frame fairly and set expectations
-✓ STAY CONCISE: Maximum 5-7 sentences (70-90 words). Be punchy!
+- REMEMBER YOUR ROLE - follow the instructions above strictly
+- If you're a WHIP: NO new content. Only rebut. Weigh clashes.
+- If you're DPM/DLO: Stay within your team's framework
+- If you're PM/LO: Frame fairly and set expectations
+- STAY ALIGNED WITH YOUR TEAM'S POSITION: Government affirms, Opposition negates
+- STAY CONCISE: Maximum 5-7 sentences (70-90 words). Be punchy!
 
-NOW: Deliver your response. Remember your role. Make it count."""
+NOW: Deliver your response. Remember your role and your team's position. Make it count."""
 
 
 # Export for easy importing
 __all__ = [
     'AP_ROLE_CONSTRAINTS',
     'get_ap_role_instructions',
+    'normalize_ap_role',
     'AP_CLASH_MATRIX_PARSER_PROMPT',
     'AP_QUERY_SYNTHESIS_PROMPT',
     'AP_RESPONSE_GENERATION_PROMPT',
