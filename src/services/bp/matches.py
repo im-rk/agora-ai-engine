@@ -36,6 +36,7 @@ from src.schemas.bp.matches import (
     BPRole,
     BPTeam,
 )
+from src.schemas.common import DebateSide
 from src.engine.state import state_manager
 
 logger = logging.getLogger(__name__)
@@ -89,14 +90,18 @@ class BPMatchService:
             Exception: If any step fails
         """
         try:
-            logger.info(f"Creating BP match for user {user_id}: {request.motion[:50]}...")
-            
+            # Derive team if missing (industry standard parity with AP)
+            effective_team = request.team
+            if not effective_team:
+                effective_side = request.side.value if request.side else "government"
+                effective_team = self._side_to_team(effective_side, request.role.value)
+
             # STEP 1-3: Create match in database (Motion + CasePrep + DebateSession)
             match_db = self.repository.create_match(
                 db=db,
                 user_id=user_id,
                 motion=request.motion,
-                team=request.team.value,   # enum to string (e.g., "opening_government")
+                team=effective_team.value if hasattr(effective_team, 'value') else effective_team,
                 role=request.role.value,   # enum to string (e.g., "prime_minister")
                 skill_level="BEGINNER"     # Default for now
             )
@@ -109,7 +114,7 @@ class BPMatchService:
             # STEP 4: Initialize Redis state (all 8 speakers scheduled for BP)
             await state_manager.initialize_match(
                 match_id=match_id,
-                human_side=request.team.value,       # e.g., "opening_government"
+                human_side=effective_team.value if hasattr(effective_team, 'value') else effective_team,
                 format_type="BP",                     # ← BP format (triggers 8-speaker schedule)
                 preferred_role=request.role.value
             )
@@ -130,7 +135,7 @@ class BPMatchService:
             from src.schemas.bp.case_prep import GenerateCasePrepRequest
             case_prep_request = GenerateCasePrepRequest(
                 motion=request.motion,
-                team=request.team,
+                team=effective_team,
                 role=request.role
             )
             case_prep = await self.case_prep_service.generate_case_prep(
@@ -248,6 +253,7 @@ class BPMatchService:
                     status=self._map_match_status(m.status),
                     your_role=your_role,
                     your_team=self._side_to_team(side_str, your_role.value),
+                    your_side=DebateSide(side_str),
                     created_at=m.started_at,
                     started_at=m.started_at,
                     ended_at=m.ended_at
@@ -346,6 +352,7 @@ class BPMatchService:
                 created_by=str(match_db.user_id),
                 your_role=BPRole(match_db.human_role),
                 your_team=self._side_to_team(case_prep.side.lower(), match_db.human_role),
+                your_side=DebateSide(case_prep.side.lower()),
                 created_at=match_db.started_at,
                 started_at=match_db.started_at,
                 ended_at=match_db.ended_at,

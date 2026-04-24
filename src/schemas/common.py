@@ -77,3 +77,8 @@ class DebateStatusEnum(str, Enum):
     ONGOING = "ongoing"
     COMPLETED = "completed"
     ABORTED = "aborted"
+
+class DebateSide(str, Enum):
+    """Shared debate sides."""
+    GOVERNMENT = "government"
+    OPPOSITION = "opposition"
