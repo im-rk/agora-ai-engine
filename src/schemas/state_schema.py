@@ -8,6 +8,7 @@ class Turn(BaseModel):
 
 class LiveMatchState(BaseModel):
     match_id: str
+    format_type: str = "AP"
     status : str="waiting"
     current_turn_index: int =0
     schedule : List[Turn]

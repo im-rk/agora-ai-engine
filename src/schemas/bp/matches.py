@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
+from src.schemas.common import DebateSide
 
 
 # ENUMS
@@ -58,7 +59,8 @@ class BPTeam(str, Enum):
 class CreateMatchRequest(BaseModel):
     """Create new BP match."""
     motion: str = Field(..., min_length=10, max_length=500, description="Debate motion")
-    team: BPTeam = Field(..., description="Your team (OG, OO, CG, CO)")
+    team: Optional[BPTeam] = Field(None, description="Your team (OG, OO, CG, CO)")
+    side: Optional[DebateSide] = Field(None, description="government | opposition (auto-derived if missing)")
     role: BPRole = Field(..., description="Your BP role")
 
 
@@ -87,6 +89,7 @@ class MatchResponse(BaseModel):
     created_by: str = Field(..., description="User who created match")
     your_role: BPRole = Field(..., description="Your role in this match")
     your_team: BPTeam = Field(..., description="Your team")
+    your_side: DebateSide = Field(..., description="Your side")
     created_at: datetime
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
@@ -103,6 +106,7 @@ class MatchListItem(BaseModel):
     status: MatchStatus = Field(..., description="Match status")
     your_role: BPRole = Field(..., description="Your role")
     your_team: BPTeam = Field(..., description="Your team")
+    your_side: DebateSide = Field(..., description="Your side (government | opposition)")
     created_at: datetime
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
