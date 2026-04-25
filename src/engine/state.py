@@ -79,6 +79,7 @@ class MatchStateManager:
         full_schedule = self._generate_schedule(format_type, human_side, preferred_role)
         state = LiveMatchState(
             match_id=match_id,
+            format_type=format_type,
             status="in_progress",
             current_turn_index=0,
             schedule=full_schedule

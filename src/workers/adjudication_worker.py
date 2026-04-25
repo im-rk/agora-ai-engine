@@ -71,7 +71,7 @@ async def run_adjudication_worker(
         adjudicator = AdjudicatorAgent()
         result_dict = await adjudicator.orchestrate_adjudication(
             transcript=transcript_text,
-            debate_format="AP",
+            debate_format=state.format_type,
             speaker_roles=speaker_roles,
             session_id=match_id
         )
