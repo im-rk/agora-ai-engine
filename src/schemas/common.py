@@ -65,6 +65,13 @@ class SkillLevelEnum(str, Enum):
     ADVANCED = "Advanced"
 
 
+class DifficultyLevel(str, Enum):
+    """Student-selected AI difficulty levels."""
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+
+
 class SpeakerTypeEnum(str, Enum):
     """Speaker type in debate."""
     HUMAN = "Human"

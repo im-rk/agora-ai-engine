@@ -22,6 +22,7 @@ from src.core.database import SessionLocal
 from src.engine.state import state_manager
 from src.ai.agents.debater import DebaterAgent
 from src.repositories.ap.matches import APMatchRepository
+from src.repositories.bp.matches import BPMatchRepository
 from src.models.debate import SpeakerType
 from .transcript_handler import reconstruct_transcript
 
@@ -78,15 +79,23 @@ async def generate_ai_response(
         speaker_side = current_speaker.side  
         
         db = SessionLocal()
+        match_repository = APMatchRepository
         try:
             match_data = APMatchRepository.get_match_with_motion(db, match_id)
+            if not match_data:
+                match_data = BPMatchRepository.get_match_with_motion(db, match_id)
+                match_repository = BPMatchRepository
+
             debate_session = match_data[0] if match_data else None
             motion_text = match_data[1].motion_text if match_data and match_data[1] else "The motion under debate"
             format_type = debate_session.format.value.lower() if debate_session else "ap"  # e.g., "BP" → "bp"
+            skill_level = debate_session.skill_level.value if debate_session and debate_session.skill_level else "Beginner"
         except Exception as e:
             logger.error(f"Failed to fetch motion for match {match_id}: {e}")
             motion_text = "The motion under debate"
             format_type = "ap"  # Default to AP for backward compatibility
+            skill_level = "Beginner"
+            match_repository = APMatchRepository
         finally:
             db.close()
 
@@ -115,6 +124,7 @@ async def generate_ai_response(
             speaker_role=speaker_role,  # Full AP role name
             speaker_id=speaker_id,
             speaker_side=speaker_side,
+            difficulty_level=skill_level,
             personality_trait="balanced",
             session_id=match_id,
             channel=channel
@@ -145,7 +155,7 @@ async def generate_ai_response(
 
         # STEP 4: Persist response to database (permanent record)
         db = SessionLocal()
-        turn = APMatchRepository.create_turn(
+        turn = match_repository.create_turn(
             db=db,
             session_id=match_id,
             turn_number=state.current_turn_index,

@@ -41,6 +41,13 @@ from src.engine.state import state_manager
 logger = logging.getLogger(__name__)
 
 
+DIFFICULTY_TO_SKILL_LEVEL = {
+    "easy": "BEGINNER",
+    "medium": "INTERMEDIATE",
+    "hard": "ADVANCED",
+}
+
+
 class APMatchService:
     """
     Service layer for AP match operations.
@@ -98,7 +105,7 @@ class APMatchService:
                 motion=request.motion,
                 side=request.side.value,  # enum to string
                 role=request.role.value,   # enum to string
-                skill_level="BEGINNER"     # Default for now
+                skill_level=DIFFICULTY_TO_SKILL_LEVEL.get(request.difficulty.value, "BEGINNER")
             )
             
             match_id = str(match_db.id)

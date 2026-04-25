@@ -40,6 +40,30 @@ from src.repositories.ap.matches import log_ai_call
 class DebaterAgent:
     """Multi-phase orchestrator for live debate responses with streaming."""
 
+    DIFFICULTY_PROFILES = {
+        "easy": {
+            "query_style": "Use broad, high-signal queries for beginner-friendly evidence.",
+            "response_style": (
+                "Keep arguments simple and clear. Use everyday language, avoid jargon, "
+                "focus on 1-2 core clashes, and make the structure easy to follow."
+            ),
+        },
+        "medium": {
+            "query_style": "Use balanced queries with both conceptual and data-backed evidence.",
+            "response_style": (
+                "Use moderate complexity. Cover 2-3 clashes with clear weighing and concise "
+                "comparative analysis."
+            ),
+        },
+        "hard": {
+            "query_style": "Use precise, technical queries targeting nuanced comparative impacts.",
+            "response_style": (
+                "Use advanced debate strategy: layered rebuttals, stakeholder vulnerability "
+                "analysis, and explicit impact calculus."
+            ),
+        },
+    }
+
     def __init__(self, format_type: str = "ap", redis_client=None, rag_engine: Optional[RAGEngine] = None):
         """
         Initialize debater agent.
@@ -91,6 +115,28 @@ class DebaterAgent:
         
         else:
             raise ValueError(f"Unsupported debate format: {self.format_type}. Use 'ap' or 'bp'.")
+
+    def _normalize_difficulty(self, difficulty_level: Optional[str]) -> str:
+        """Normalize caller-provided difficulty labels to easy/medium/hard."""
+        if not difficulty_level:
+            return "easy"
+
+        key = str(difficulty_level).strip().lower()
+        mapping = {
+            "easy": "easy",
+            "beginner": "easy",
+            "medium": "medium",
+            "intermediate": "medium",
+            "hard": "hard",
+            "advanced": "hard",
+        }
+        return mapping.get(key, "easy")
+
+    def _build_difficulty_instructions(self, difficulty_level: Optional[str]) -> tuple[str, str, str]:
+        """Return normalized difficulty plus query/response guidance."""
+        normalized = self._normalize_difficulty(difficulty_level)
+        profile = self.DIFFICULTY_PROFILES[normalized]
+        return normalized, profile["query_style"], profile["response_style"]
 
     async def phase1_parse_clash_matrix(self, transcript: str, motion: str, session_id: Optional[str] = None) -> dict:
         """
@@ -153,6 +199,7 @@ class DebaterAgent:
         clash_matrix: dict,
         motion: str,
         speaker_role: str,
+        difficulty_level: Optional[str] = None,
         session_id: Optional[str] = None
     ) -> list[str]:
         """
@@ -172,6 +219,7 @@ class DebaterAgent:
             List of 3-5 optimized search queries
         """
         llm = get_groq_client(streaming=False, temperature=0.3)
+        difficulty, query_difficulty_style, _ = self._build_difficulty_instructions(difficulty_level)
         
         # Normalize role name for constraint lookup (state.schedule uses short names)
         normalized_role = self.normalize_role(speaker_role)
@@ -199,7 +247,11 @@ class DebaterAgent:
                 role_constraint=role_constraint,
                 team_position=team_position
             )),
-            HumanMessage(content=f"Generate search queries for:\n{json.dumps(clash_matrix, indent=2)}")
+            HumanMessage(content=(
+                f"Difficulty: {difficulty.upper()}\n"
+                f"Difficulty Guidance: {query_difficulty_style}\n\n"
+                f"Generate search queries for:\n{json.dumps(clash_matrix, indent=2)}"
+            ))
         ]
 
         response = await llm.ainvoke(prompt)
@@ -293,6 +345,7 @@ class DebaterAgent:
         speaker_role: str,
         evidence: list[dict],
         speaker_id: str,
+        difficulty_level: Optional[str] = None,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None,
         channel: Optional[str] = None
@@ -319,6 +372,7 @@ class DebaterAgent:
         """
         # Initialize streaming Groq client
         llm = get_groq_client(streaming=True, temperature=0.7)
+        difficulty, _, response_difficulty_style = self._build_difficulty_instructions(difficulty_level)
         
         # Use provided channel or fallback securely
         channel = channel or f"debate:{speaker_id}:response"
@@ -352,9 +406,16 @@ class DebaterAgent:
             motion=motion,
             speaker_role=normalized_role,
             team_side=team_side,
+            team_position=team_side,
             personality=personality_trait or "balanced",
             clash_matrix=json.dumps(clash_matrix),
             evidence=evidence_text if evidence else "No specific evidence found."
+        )
+        system_prompt += (
+            f"\n\n--- DIFFICULTY TARGET ---\n"
+            f"Student Difficulty: {difficulty.upper()}\n"
+            f"Guidance: {response_difficulty_style}\n"
+            f"Do not deviate from this difficulty level."
         )
         
         messages = [
@@ -396,6 +457,7 @@ class DebaterAgent:
         speaker_role: str,
         speaker_id: str,
         speaker_side: str,
+        difficulty_level: Optional[str] = None,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None,
         channel: Optional[str] = None
@@ -419,6 +481,7 @@ class DebaterAgent:
             speaker_role: Speaker role name (e.g., "Prime Minister", "Member of Government")
             speaker_id: Unique speaker identifier (for Redis channel)
             speaker_side: Team side ("Government" or "Opposition")
+            difficulty_level: Difficulty target (easy/medium/hard or beginner/intermediate/advanced)
             personality_trait: Optional persona (e.g., "aggressive", "analytical")
             session_id: Debate session ID for logging all LLM calls
             channel: Custom Redis channel (auto-generated if None)
@@ -433,7 +496,13 @@ class DebaterAgent:
         clash_matrix = await self.phase1_parse_clash_matrix(transcript, motion, session_id)
         
         # Phase 2: Query Synthesis
-        queries = await self.phase2_generate_search_queries(clash_matrix, motion, speaker_role, session_id)
+        queries = await self.phase2_generate_search_queries(
+            clash_matrix,
+            motion,
+            speaker_role,
+            difficulty_level,
+            session_id,
+        )
         
         # Phase 3: Retrieve & Re-Rank
         evidence = await self.phase3_retrieve_and_rerank(
@@ -450,6 +519,7 @@ class DebaterAgent:
             speaker_role=speaker_role,
             evidence=evidence,
             speaker_id=speaker_id,
+            difficulty_level=difficulty_level,
             personality_trait=personality_trait,
             session_id=session_id,
             channel=channel
