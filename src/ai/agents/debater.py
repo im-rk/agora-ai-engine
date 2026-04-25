@@ -31,20 +31,6 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from src.ai.clients.groq_client import get_groq_client
 from src.ai.tools.rag_engine import RAGEngine
 from src.ai.callbacks.redis_stream import RedisStreamingCallbackHandler
-from src.ai.prompts.debater_prompts import (
-    CLASH_MATRIX_PARSER_PROMPT,
-    QUERY_SYNTHESIS_PROMPT,
-    RESPONSE_GENERATION_PROMPT,
-)
-# Import AP-specific role constraints and functions
-from src.ai.prompts.ap import (
-    AP_ROLE_CONSTRAINTS,
-    get_ap_role_instructions,
-    normalize_ap_role,
-    AP_CLASH_MATRIX_PARSER_PROMPT,
-    AP_QUERY_SYNTHESIS_PROMPT,
-    AP_RESPONSE_GENERATION_PROMPT,
-)
 from src.core.redis_client import get_redis_async
 from src.core.config import settings
 from src.core.database import SessionLocal
@@ -54,16 +40,57 @@ from src.repositories.ap.matches import log_ai_call
 class DebaterAgent:
     """Multi-phase orchestrator for live debate responses with streaming."""
 
-    def __init__(self, redis_client=None, rag_engine: Optional[RAGEngine] = None):
+    def __init__(self, format_type: str = "ap", redis_client=None, rag_engine: Optional[RAGEngine] = None):
         """
         Initialize debater agent.
         
         Args:
+            format_type: Debate format - "ap" (Asian Parliamentary) or "bp" (British Parliamentary)
             redis_client: Redis async client (auto-fetched if None)
             rag_engine: RAG engine for evidence retrieval (auto-created if None)
+            
+        Raises:
+            ValueError: If format_type is not "ap" or "bp"
         """
         self.redis_client = redis_client or get_redis_async()
         self.rag_engine = rag_engine or RAGEngine()
+        self.format_type = format_type.lower()
+        
+        # Import format-specific prompts and functions
+        if self.format_type == "ap":
+            from src.ai.prompts.ap import (
+                AP_ROLE_CONSTRAINTS,
+                get_ap_role_instructions,
+                normalize_ap_role,
+                AP_CLASH_MATRIX_PARSER_PROMPT,
+                AP_QUERY_SYNTHESIS_PROMPT,
+                AP_RESPONSE_GENERATION_PROMPT,
+            )
+            self.role_constraints = AP_ROLE_CONSTRAINTS
+            self.get_role_instructions = get_ap_role_instructions
+            self.normalize_role = normalize_ap_role
+            self.clash_matrix_prompt = AP_CLASH_MATRIX_PARSER_PROMPT
+            self.query_synthesis_prompt = AP_QUERY_SYNTHESIS_PROMPT
+            self.response_generation_prompt = AP_RESPONSE_GENERATION_PROMPT
+        
+        elif self.format_type == "bp":
+            from src.ai.prompts.bp import (
+                BP_ROLE_CONSTRAINTS,
+                get_bp_role_instructions,
+                normalize_bp_role,
+                BP_CLASH_MATRIX_PARSER_PROMPT,
+                BP_QUERY_SYNTHESIS_PROMPT,
+                BP_RESPONSE_GENERATION_PROMPT,
+            )
+            self.role_constraints = BP_ROLE_CONSTRAINTS
+            self.get_role_instructions = get_bp_role_instructions
+            self.normalize_role = normalize_bp_role
+            self.clash_matrix_prompt = BP_CLASH_MATRIX_PARSER_PROMPT
+            self.query_synthesis_prompt = BP_QUERY_SYNTHESIS_PROMPT
+            self.response_generation_prompt = BP_RESPONSE_GENERATION_PROMPT
+        
+        else:
+            raise ValueError(f"Unsupported debate format: {self.format_type}. Use 'ap' or 'bp'.")
 
     async def phase1_parse_clash_matrix(self, transcript: str, motion: str, session_id: Optional[str] = None) -> dict:
         """
@@ -76,6 +103,7 @@ class DebaterAgent:
         
         Args:
             transcript: Full debate transcript so far
+            motion: Debate motion
             session_id: Debate session ID for logging
             
         Returns:
@@ -84,7 +112,7 @@ class DebaterAgent:
         llm = get_groq_client(streaming=False, temperature=0.1)
 
         prompt = [
-            SystemMessage(content=AP_CLASH_MATRIX_PARSER_PROMPT.format(motion=motion)),
+            SystemMessage(content=self.clash_matrix_prompt.format(motion=motion)),
             HumanMessage(content=f"Parse this transcript:\n\n{transcript}")
         ]
 
@@ -97,8 +125,8 @@ class DebaterAgent:
                 log_ai_call(
                     db=db,
                     session_id=session_id,
-                    agent_name="DebaterAgent:Phase1-ClashMatrixParser",
-                    prompt_used=AP_CLASH_MATRIX_PARSER_PROMPT[:500],
+                    agent_name=f"DebaterAgent:Phase1-ClashMatrixParser ({self.format_type.upper()})",
+                    prompt_used=self.clash_matrix_prompt[:500],
                     model_version="llama-3.1-8b-instant",
                     temperature=0.1,
                     raw_output=response.content[:1000]
@@ -136,7 +164,8 @@ class DebaterAgent:
         
         Args:
             clash_matrix: Output from Phase 1 (opponent claims, dropped args, vuln)
-            speaker_role: AP speaker role (e.g., "Prime Minister (PM)", "Government Whip")
+            motion: Debate motion
+            speaker_role: Speaker role (e.g., "Prime Minister", "Government Whip")
             session_id: Debate session ID for logging
             
         Returns:
@@ -144,29 +173,27 @@ class DebaterAgent:
         """
         llm = get_groq_client(streaming=False, temperature=0.3)
         
-        # Normalize role name for constraint lookup (state.schedule uses short names like "Prime Minister")
-        normalized_role = normalize_ap_role(speaker_role)
+        # Normalize role name for constraint lookup (state.schedule uses short names)
+        normalized_role = self.normalize_role(speaker_role)
         
-        # Extract role constraint for query synthesis (AP-specific)
+        # Extract role constraint for query synthesis
         role_constraint = ""
-        if normalized_role in AP_ROLE_CONSTRAINTS:
-            role_info = AP_ROLE_CONSTRAINTS[normalized_role]
+        if normalized_role in self.role_constraints:
+            role_info = self.role_constraints[normalized_role]
             role_constraint = f"CONSTRAINT: {role_info['constraint']}\nFOCUS: {role_info['focus']}"
         else:
             role_constraint = f"Role: {speaker_role} - Advance your team's position with evidence"
 
         # Determine team position based on normalized role
-        team_side = "Government" if "Government" in normalized_role or normalized_role.endswith("(PM)") or normalized_role.endswith("(DPM)") else "Opposition"
-        if "Leader of Opposition" in normalized_role or normalized_role.endswith("(LO)") or normalized_role.endswith("(DLO)"):
-            team_side = "Opposition"
-        elif "Opposition Whip" in normalized_role:
+        team_side = "Government" if "Government" in normalized_role or normalized_role.endswith("(PM)") or normalized_role.endswith("(DPM)") or normalized_role.endswith("(MG)") or normalized_role.endswith("(GW)") else "Opposition"
+        if "Leader of Opposition" in normalized_role or normalized_role.endswith("(LO)") or normalized_role.endswith("(DLO)") or normalized_role.endswith("(MO)") or normalized_role.endswith("(OW)"):
             team_side = "Opposition"
         
         team_position = "You AFFIRM this motion (support it)" if team_side == "Government" else "You NEGATE this motion (oppose it)"
 
-        # Use AP-specific query synthesis prompt
+        # Use format-specific query synthesis prompt
         prompt = [
-            SystemMessage(content=AP_QUERY_SYNTHESIS_PROMPT.format(
+            SystemMessage(content=self.query_synthesis_prompt.format(
                 motion=motion,
                 speaker_role=normalized_role,
                 role_constraint=role_constraint,
@@ -184,8 +211,8 @@ class DebaterAgent:
                 log_ai_call(
                     db=db,
                     session_id=session_id,
-                    agent_name="DebaterAgent:Phase2-QuerySynthesis",
-                    prompt_used=AP_QUERY_SYNTHESIS_PROMPT[:500],
+                    agent_name=f"DebaterAgent:Phase2-QuerySynthesis ({self.format_type.upper()})",
+                    prompt_used=self.query_synthesis_prompt[:500],
                     model_version="llama-3.1-8b-instant",
                     temperature=0.3,
                     raw_output=response.content[:1000]
@@ -279,15 +306,13 @@ class DebaterAgent:
         
         Args:
             clash_matrix: State from Phase 1
-            speaker_role: "affirmative" or "negative"
+            motion: Debate motion
+            speaker_role: Speaker role (e.g., "Prime Minister", "Government Whip")
             evidence: Top evidence pieces from Phase 3
             speaker_id: Unique speaker identifier
             personality_trait: Optional persona override (e.g., "aggressive", "analytical")
             session_id: Debate session ID for logging
             channel: Redis channel to stream tokens to
-            
-        Yields:
-            Response tokens as they're generated (published to Redis)
             
         Returns:
             Full assembled response string
@@ -311,22 +336,18 @@ class DebaterAgent:
         ])
         
         # Normalize role name for constraint lookup
-        normalized_role = normalize_ap_role(speaker_role)
+        normalized_role = self.normalize_role(speaker_role)
         
-        # Get AP role-specific instructions using normalized role
-        role_instructions = get_ap_role_instructions(normalized_role)
+        # Get format-specific role instructions using normalized role
+        role_instructions = self.get_role_instructions(normalized_role)
         
         # Determine team side from normalized role
-        team_side = "Government" if "Government" in normalized_role or normalized_role.endswith("(PM)") or normalized_role.endswith("(DPM)") else "Opposition"
-        if "Leader of Opposition" in normalized_role or normalized_role.endswith("(LO)") or normalized_role.endswith("(DLO)"):
+        team_side = "Government" if "Government" in normalized_role or normalized_role.endswith("(PM)") or normalized_role.endswith("(DPM)") or normalized_role.endswith("(MG)") or normalized_role.endswith("(GW)") else "Opposition"
+        if "Leader of Opposition" in normalized_role or normalized_role.endswith("(LO)") or normalized_role.endswith("(DLO)") or normalized_role.endswith("(MO)") or normalized_role.endswith("(OW)"):
             team_side = "Opposition"
-        elif "Opposition Whip" in normalized_role:
-            team_side = "Opposition"
-        elif "Government" in normalized_role or "Whip" in normalized_role:
-            team_side = "Government" if "Government" in normalized_role else "Opposition"
         
-        # Assemble final prompt with AP-specific template (use normalized role in prompt)
-        system_prompt = AP_RESPONSE_GENERATION_PROMPT.format(
+        # Assemble final prompt with format-specific template
+        system_prompt = self.response_generation_prompt.format(
             role_instructions=role_instructions,
             motion=motion,
             speaker_role=normalized_role,
@@ -354,8 +375,8 @@ class DebaterAgent:
                 log_ai_call(
                     db=db,
                     session_id=session_id,
-                    agent_name="DebaterAgent:Phase4-ResponseGeneration",
-                    prompt_used=AP_RESPONSE_GENERATION_PROMPT[:500],
+                    agent_name=f"DebaterAgent:Phase4-ResponseGeneration ({self.format_type.upper()})",
+                    prompt_used=self.response_generation_prompt[:500],
                     model_version="llama-3.1-8b-instant",
                     temperature=0.7,
                     raw_output=response.content[:1000]
@@ -388,15 +409,25 @@ class DebaterAgent:
           3. Retrieve top evidence pieces
           4. Generate and stream response
         
+        Format-Aware Behavior:
+        - If initialized with format_type="ap": Uses AP-specific prompts and role constraints
+        - If initialized with format_type="bp": Uses BP-specific prompts and role constraints
+        
         Args:
             transcript: Full debate transcript so far
-            speaker_role: "affirmative" or "negative"
+            motion: Debate motion/proposition
+            speaker_role: Speaker role name (e.g., "Prime Minister", "Member of Government")
             speaker_id: Unique speaker identifier (for Redis channel)
+            speaker_side: Team side ("Government" or "Opposition")
             personality_trait: Optional persona (e.g., "aggressive", "analytical")
             session_id: Debate session ID for logging all LLM calls
+            channel: Custom Redis channel (auto-generated if None)
             
         Returns:
             Complete debate response string with tokens published to Redis
+            
+        Raises:
+            ValueError: If format_type was invalid during initialization
         """
         # Phase 1: State Tracking
         clash_matrix = await self.phase1_parse_clash_matrix(transcript, motion, session_id)
