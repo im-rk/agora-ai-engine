@@ -80,22 +80,25 @@ async def generate_ai_response(
         db = SessionLocal()
         try:
             match_data = APMatchRepository.get_match_with_motion(db, match_id)
+            debate_session = match_data[0] if match_data else None
             motion_text = match_data[1].motion_text if match_data and match_data[1] else "The motion under debate"
+            format_type = debate_session.format.value.lower() if debate_session else "ap"  # e.g., "BP" → "bp"
         except Exception as e:
             logger.error(f"Failed to fetch motion for match {match_id}: {e}")
             motion_text = "The motion under debate"
+            format_type = "ap"  # Default to AP for backward compatibility
         finally:
             db.close()
 
         transcript = reconstruct_transcript(state)
 
         logger.info(
-            f"[AI] Starting 4-phase pipeline for {speaker_role} ({speaker_side})"
-            f"(speaker_id: {speaker_id})"
+            f"[AI] Starting 4-phase pipeline for {speaker_role} ({speaker_side}) "
+            f"in {format_type.upper()} format (speaker_id: {speaker_id})"
         )
         logger.debug(f"[AI] Transcript length: {len(transcript)} chars")
 
-        debater = DebaterAgent(redis_client=client)
+        debater = DebaterAgent(format_type=format_type, redis_client=client)
 
         await client.publish(channel, json.dumps({
             "event": "TURN_STARTED",
