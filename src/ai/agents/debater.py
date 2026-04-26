@@ -25,6 +25,7 @@ Streaming Flow:
 """
 
 import json
+import random
 from typing import Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -32,7 +33,7 @@ from src.ai.clients.groq_client import get_groq_client
 from src.ai.tools.rag_engine import RAGEngine
 from src.ai.callbacks.redis_stream import RedisStreamingCallbackHandler
 from src.core.redis_client import get_redis_async
-from src.core.config import settings
+from src.core.difficulty import DebateDifficultyConfig, get_difficulty_config
 from src.core.database import SessionLocal
 from src.repositories.ap.matches import log_ai_call
 
@@ -153,6 +154,7 @@ class DebaterAgent:
         clash_matrix: dict,
         motion: str,
         speaker_role: str,
+        max_queries: int = 3,
         session_id: Optional[str] = None
     ) -> list[str]:
         """
@@ -230,7 +232,7 @@ class DebaterAgent:
         else:
             queries = [q.strip() for q in content.split("\n") if q.strip()]
         
-        return queries[:5]  # Limit to 5 queries
+        return queries[:max(1, max_queries)]
 
     async def phase3_retrieve_and_rerank(
         self, 
@@ -262,7 +264,7 @@ class DebaterAgent:
                 topic=query,
                 match_id=match_id,
                 side=side,
-                k=5  # Get top 5 per query
+                k=max(1, top_k)
             )
             all_results.extend(results)
         
@@ -293,6 +295,8 @@ class DebaterAgent:
         speaker_role: str,
         evidence: list[dict],
         speaker_id: str,
+        persona_modifier: str,
+        temperature: float,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None,
         channel: Optional[str] = None
@@ -318,7 +322,7 @@ class DebaterAgent:
             Full assembled response string
         """
         # Initialize streaming Groq client
-        llm = get_groq_client(streaming=True, temperature=0.7)
+        llm = get_groq_client(streaming=True, temperature=temperature)
         
         # Use provided channel or fallback securely
         channel = channel or f"debate:{speaker_id}:response"
@@ -352,9 +356,14 @@ class DebaterAgent:
             motion=motion,
             speaker_role=normalized_role,
             team_side=team_side,
+            team_position=team_side,
             personality=personality_trait or "balanced",
             clash_matrix=json.dumps(clash_matrix),
             evidence=evidence_text if evidence else "No specific evidence found."
+        )
+        system_prompt += (
+            "\n\n--- DIFFICULTY PERSONA MODIFIER ---\n"
+            f"{persona_modifier}"
         )
         
         messages = [
@@ -378,7 +387,7 @@ class DebaterAgent:
                     agent_name=f"DebaterAgent:Phase4-ResponseGeneration ({self.format_type.upper()})",
                     prompt_used=self.response_generation_prompt[:500],
                     model_version="llama-3.1-8b-instant",
-                    temperature=0.7,
+                    temperature=temperature,
                     raw_output=response.content[:1000]
                 )
             except Exception as log_error:
@@ -396,6 +405,7 @@ class DebaterAgent:
         speaker_role: str,
         speaker_id: str,
         speaker_side: str,
+        difficulty_level: Optional[str] = None,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None,
         channel: Optional[str] = None
@@ -419,6 +429,7 @@ class DebaterAgent:
             speaker_role: Speaker role name (e.g., "Prime Minister", "Member of Government")
             speaker_id: Unique speaker identifier (for Redis channel)
             speaker_side: Team side ("Government" or "Opposition")
+            difficulty_level: Difficulty target (easy/medium/hard or beginner/intermediate/advanced)
             personality_trait: Optional persona (e.g., "aggressive", "analytical")
             session_id: Debate session ID for logging all LLM calls
             channel: Custom Redis channel (auto-generated if None)
@@ -431,16 +442,32 @@ class DebaterAgent:
         """
         # Phase 1: State Tracking
         clash_matrix = await self.phase1_parse_clash_matrix(transcript, motion, session_id)
+
+        # Difficulty config (single source of truth)
+        config: DebateDifficultyConfig = get_difficulty_config(difficulty_level or "")
+
+        # Strategy throttle: beginner/intermediate may forget an opponent claim.
+        opponent_claims = clash_matrix.get("opponent_claims", [])
+        if opponent_claims and random.random() < config.argument_drop_probability:
+            drop_index = random.randrange(len(opponent_claims))
+            opponent_claims.pop(drop_index)
+            clash_matrix["opponent_claims"] = opponent_claims
         
         # Phase 2: Query Synthesis
-        queries = await self.phase2_generate_search_queries(clash_matrix, motion, speaker_role, session_id)
+        queries = await self.phase2_generate_search_queries(
+            clash_matrix,
+            motion,
+            speaker_role,
+            config.max_search_queries,
+            session_id,
+        )
         
         # Phase 3: Retrieve & Re-Rank
         evidence = await self.phase3_retrieve_and_rerank(
             queries=queries, 
             match_id=session_id, 
             side=speaker_side, 
-            top_k=3
+            top_k=config.rag_top_k
         )
         
         # Phase 4: Generation with Streaming
@@ -450,6 +477,8 @@ class DebaterAgent:
             speaker_role=speaker_role,
             evidence=evidence,
             speaker_id=speaker_id,
+            persona_modifier=config.persona_modifier,
+            temperature=config.temperature,
             personality_trait=personality_trait,
             session_id=session_id,
             channel=channel

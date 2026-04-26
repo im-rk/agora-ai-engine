@@ -42,6 +42,13 @@ from src.engine.state import state_manager
 logger = logging.getLogger(__name__)
 
 
+DIFFICULTY_TO_SKILL_LEVEL = {
+    "easy": "BEGINNER",
+    "medium": "INTERMEDIATE",
+    "hard": "ADVANCED",
+}
+
+
 class BPMatchService:
     """
     Service layer for BP match operations.
@@ -103,7 +110,7 @@ class BPMatchService:
                 motion=request.motion,
                 team=effective_team.value if hasattr(effective_team, 'value') else effective_team,
                 role=request.role.value,   # enum to string (e.g., "prime_minister")
-                skill_level="BEGINNER"     # Default for now
+                skill_level=DIFFICULTY_TO_SKILL_LEVEL.get(request.difficulty.value, "BEGINNER")
             )
             
             match_id = str(match_db.id)

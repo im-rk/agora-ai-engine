@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
-from src.schemas.common import DebateSide
+from src.schemas.common import DebateSide, DifficultyLevel
 
 
 # ENUMS
@@ -62,6 +62,7 @@ class CreateMatchRequest(BaseModel):
     team: Optional[BPTeam] = Field(None, description="Your team (OG, OO, CG, CO)")
     side: Optional[DebateSide] = Field(None, description="government | opposition (auto-derived if missing)")
     role: BPRole = Field(..., description="Your BP role")
+    difficulty: DifficultyLevel = Field(DifficultyLevel.EASY, description="easy | medium | hard")
 
 
 class UpdateMatchStatusRequest(BaseModel):
