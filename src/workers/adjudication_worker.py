@@ -76,11 +76,7 @@ async def run_adjudication_worker(
             session_id=match_id
         )
 
-        # STEP 4: Parse raw dict → AdjudicationResult Pydantic object
-        # This is REQUIRED because:
-        #   - result.winning_team is a computed @property on PillarBreakdown
-        #   - result.to_database_dict() is a method on AdjudicationResult
-        # Neither exists on a plain dict — this was the original critical bug.
+       
         from src.schemas.adjudication import (
             AdjudicationResult, MacroClash, WCMEntry,
             PillarBreakdown, PillarScore, AdjudicationSummary, SpeakerScore
