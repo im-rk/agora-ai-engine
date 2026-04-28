@@ -122,10 +122,6 @@ class APMatchService:
             )
             logger.info(f"Redis state initialized for match {match_id}")
             
-            # STEP 5: Deferred - START_MATCH event is explicitly published by the Frontend 
-            # via WebSocket ONLY when the user clicks 'Enter Arena' and mounts the ArenaPage.
-            # This prevents premature AI generation while the user is still on the Prep page.
-            
             # STEP 6: Generate case prep for user via AI
             from src.schemas.ap.case_prep import GenerateCasePrepRequest
             case_prep_request = GenerateCasePrepRequest(
