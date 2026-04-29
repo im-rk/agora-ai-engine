@@ -426,19 +426,23 @@ class BPMatchRepository:
         db: Session,
         match_id: str,
         turn_index: int,
-        duration_seconds: float
+        duration_seconds: float,
+        started_at: Optional[str] = None,
+        ended_at: Optional[str] = None
     ) -> Optional[Turn]:
         """
         Update turn timing with duration and end timestamp.
         
-        Called when AI_THOUGHT_COMPLETE callback is received.
-        Calculates and persists turn duration to database for analytics.
+        Called when AI speech completes (frontend-measured timing).
+        Persists actual speech duration for analytics.
         
         Args:
             db (Session): Database session
             match_id (str): UUID of DebateSession (match)
             turn_index (int): Turn number (0-indexed)
-            duration_seconds (float): Duration of AI thinking/speaking in seconds
+            duration_seconds (float): Duration of speech in seconds (frontend-measured)
+            started_at (Optional[str]): ISO timestamp when speech started (from frontend)
+            ended_at (Optional[str]): ISO timestamp when speech ended (from frontend)
         
         Returns:
             Optional[Turn]: Updated turn record, or None if not found
@@ -461,15 +465,21 @@ class BPMatchRepository:
             
             # Only update if not already set (idempotent)
             if not turn.ended_at:
-                turn.ended_at = datetime.now(timezone.utc)
                 turn.duration_seconds = int(duration_seconds)
+                
+                # Use frontend-provided timestamps if available
+                if started_at:
+                    turn.started_at = datetime.fromisoformat(started_at)
+                if ended_at:
+                    turn.ended_at = datetime.fromisoformat(ended_at)
                 
                 db.commit()
                 db.refresh(turn)
                 
                 logger.info(
                     f"Turn timing updated: {turn.id} "
-                    f"(duration: {turn.duration_seconds}s, ended_at: {turn.ended_at})"
+                    f"(duration: {turn.duration_seconds}s, "
+                    f"started_at: {turn.started_at}, ended_at: {turn.ended_at})"
                 )
                 return turn
             else:
