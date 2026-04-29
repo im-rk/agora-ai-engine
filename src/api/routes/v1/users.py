@@ -40,7 +40,7 @@ async def get_user_stats(
           "best_score": float | None,  # 0–100, null if no completed debates
         }
     """
-    user_id = current_user["id"]
+    user_id = current_user.user_id
 
     try:
         # ── 1. Aggregate from debate_sessions ──────────────────────────────
@@ -48,12 +48,12 @@ async def get_user_stats(
             SELECT
                 ds.id,
                 ds.status,
-                ds.human_side,
+                ds.human_role as human_side,
                 ar.winning_team,
                 ar.gov_total_score,
                 ar.opp_total_score
             FROM debate_sessions ds
-            LEFT JOIN adjudication_results ar ON ar.session_id = ds.id::text
+            LEFT JOIN adjudication_results ar ON ar.session_id = ds.id
             WHERE ds.user_id = :user_id
         """)
 

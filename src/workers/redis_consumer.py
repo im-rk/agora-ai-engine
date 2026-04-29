@@ -35,6 +35,21 @@ from .adjudication_worker import run_adjudication_worker
 
 logger = logging.getLogger(__name__)
 
+# Global dictionary to track active async tasks per match_id
+# This prevents overlapping AI responses when a match is restarted or triggered twice
+# Format: { match_id: asyncio.Task }
+active_tasks = {}
+
+
+def cancel_active_task(match_id: str):
+    """Cancel any existing async task for the given match_id."""
+    if match_id in active_tasks:
+        task = active_tasks[match_id]
+        if not task.done():
+            logger.info(f"[CONSUMER] Cancelling existing task for match {match_id}")
+            task.cancel()
+        del active_tasks[match_id]
+
 
 async def start_redis_consumer():
     """
@@ -101,7 +116,8 @@ async def start_redis_consumer():
                                 f"[CONSUMER] AI ({current_speaker.role}) speaks first! "
                                 f"Starting 4-phase debate pipeline..."
                             )
-                            asyncio.create_task(
+                            cancel_active_task(match_id)
+                            active_tasks[match_id] = asyncio.create_task(
                                 generate_ai_response(
                                     client=client,
                                     channel=channel,
@@ -214,7 +230,8 @@ async def start_redis_consumer():
                         logger.info(
                             f"[CONSUMER] Starting async adjudication worker for {match_id}..."
                         )
-                        asyncio.create_task(
+                        cancel_active_task(match_id)
+                        active_tasks[match_id] = asyncio.create_task(
                             run_adjudication_worker(
                                 client=client,
                                 channel=channel,
@@ -233,7 +250,8 @@ async def start_redis_consumer():
                                 f"[CONSUMER] It is the {next_speaker.role}'s turn (AI). "
                                 f"Generating response..."
                             )
-                            asyncio.create_task(
+                            cancel_active_task(match_id)
+                            active_tasks[match_id] = asyncio.create_task(
                                 generate_ai_response(
                                     client=client,
                                     channel=channel,

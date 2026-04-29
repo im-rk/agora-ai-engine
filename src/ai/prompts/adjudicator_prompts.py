@@ -205,4 +205,9 @@ Format:
     "key_decision_1": "Theme and explanation",
     "key_decision_2": "Theme and explanation",
     "key_decision_3": "Theme and explanation"
-}}"""
+}}
+
+Rules:
+1. Output ONLY valid JSON.
+2. Do not include markdown code blocks like ```json.
+3. Do not include any text or explanations outside the JSON object."""

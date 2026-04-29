@@ -170,17 +170,11 @@ async def generate_ai_response(
         logger.debug(f"[AI] Turn record committed to database: {turn.id}")
 
        
-        state.current_turn_index += 1
-        await state_manager.update_state(state)
-        logger.info(
-            f"[AI] Turn advanced to index {state.current_turn_index} "
-            f"(of {len(state.schedule)} total turns)"
-        )
-
-        await client.publish(channel, json.dumps({
-            "action": "TURN_CHANGED",
-        }))
-        logger.info(f"[AI] Published TURN_CHANGED to {channel}")
+        # We no longer advance the turn here!
+        # The frontend will send {"action": "END_TURN"} once the TTS audio 
+        # queue is fully exhausted. The Go gateway will then increment the turn
+        # and publish TURN_CHANGED, which will trigger the next speaker.
+        logger.info(f"[AI] Text generation complete. Waiting for frontend to finish audio playback and send END_TURN...")
 
         return response
 
@@ -405,7 +399,7 @@ async def persist_human_turn(
 #         # Future implementation:
 #         # 1. Extract POI context from recent transcript
 #         # 2. Generate POI response using LLM
-#         # 3. Convert response to speech (ElevenLabs)
+#         # 3. Convert response to speech (Voicebox TTS)
 #         # 4. Publish audio to React via WebSocket
 #         # 5. Log POI in database for analytics
 
