@@ -53,7 +53,7 @@ async def get_user_stats(
                 ar.gov_total_score,
                 ar.opp_total_score
             FROM debate_sessions ds
-            LEFT JOIN adjudication_results ar ON ar.session_id = ds.id::text
+            LEFT JOIN adjudication_results ar ON ar.session_id = ds.id
             WHERE ds.user_id = :user_id
         """)
 
