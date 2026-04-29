@@ -40,7 +40,7 @@ async def get_user_stats(
           "best_score": float | None,  # 0–100, null if no completed debates
         }
     """
-    user_id = current_user["id"]
+    user_id = current_user.user_id
 
     try:
         # ── 1. Aggregate from debate_sessions ──────────────────────────────
