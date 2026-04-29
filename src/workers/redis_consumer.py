@@ -26,6 +26,7 @@ import logging
 import redis.asyncio as redis
 
 from src.core.config import settings
+from src.core.database import SessionLocal
 from src.engine.state import state_manager
 from .ai_response_generator import (
     generate_ai_response,
@@ -280,6 +281,51 @@ async def start_redis_consumer():
                 # EVENT: Other - Match finished or unrecognized action
                 else:
                     logger.debug(f"[CONSUMER] Match {match_id} is finished!")
+                
+                # EVENT: AI_THOUGHT_COMPLETE - Update turn timing from AI callback
+                if event_type == "AI_THOUGHT_COMPLETE":
+                    duration_ms = data.get("duration_ms")
+                    turn_index = data.get("turn_index")
+                    
+                    if match_id and turn_index is not None and duration_ms is not None:
+                        logger.info(
+                            f"[CONSUMER] Received AI_THOUGHT_COMPLETE for match {match_id}, "
+                            f"turn {turn_index}, duration {duration_ms}ms"
+                        )
+                        
+                        try:
+                            db = SessionLocal()
+                            from datetime import datetime, timezone
+                            
+                            # Determine repository based on match format
+                            match_data_ap = APMatchRepository.get_match_with_motion(db, match_id)
+                            match_repository = APMatchRepository
+                            
+                            if not match_data_ap:
+                                from src.repositories.bp.matches import BPMatchRepository
+                                match_data = BPMatchRepository.get_match_with_motion(db, match_id)
+                                match_repository = BPMatchRepository
+                            
+                            # Update turn with end time and duration
+                            duration_seconds = duration_ms / 1000.0
+                            match_repository.update_turn_timing(
+                                db=db,
+                                match_id=match_id,
+                                turn_index=turn_index,
+                                duration_seconds=duration_seconds
+                            )
+                            
+                            logger.info(
+                                f"[CONSUMER] Turn timing updated for match {match_id}, "
+                                f"turn {turn_index}: {duration_seconds:.2f}s"
+                            )
+                            db.close()
+                        except Exception as e:
+                            logger.error(
+                                f"[CONSUMER] Failed to update turn timing: {e}"
+                            )
+                            if db:
+                                db.close()
 
             except json.JSONDecodeError:
                 pass
