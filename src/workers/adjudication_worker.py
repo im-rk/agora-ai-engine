@@ -107,6 +107,12 @@ async def run_adjudication_worker(
             "key_decision_3": "Unavailable"
         }
 
+        raw_summary = result_dict.get("summary") or fallback_summary
+        # Force all fields to strings in case LLM hallucinates nested objects
+        for k in ["adjudication", "key_decision_1", "key_decision_2", "key_decision_3"]:
+            if k in raw_summary and isinstance(raw_summary[k], dict):
+                raw_summary[k] = json.dumps(raw_summary[k])
+
         result = AdjudicationResult(
             clashes=[MacroClash(**c) for c in result_dict.get("clashes", [])],
             wcm_matrix=[WCMEntry(**w) for w in result_dict.get("wcm_matrix", [])],
@@ -119,7 +125,7 @@ async def run_adjudication_worker(
                 pillar_reasoning=pillar_data.get("pillar_reasoning", "")
             ),
             speaker_scores=[SpeakerScore(**s) for s in speaker_scores_list],
-            summary=AdjudicationSummary(**(result_dict.get("summary") or fallback_summary)),
+            summary=AdjudicationSummary(**raw_summary),
             session_id=match_id
         )
 
