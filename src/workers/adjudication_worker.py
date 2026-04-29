@@ -119,7 +119,7 @@ async def run_adjudication_worker(
                 pillar_reasoning=pillar_data.get("pillar_reasoning", "")
             ),
             speaker_scores=[SpeakerScore(**s) for s in speaker_scores_list],
-            summary=AdjudicationSummary(**result_dict.get("summary", fallback_summary)),
+            summary=AdjudicationSummary(**(result_dict.get("summary") or fallback_summary)),
             session_id=match_id
         )
 

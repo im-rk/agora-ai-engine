@@ -48,7 +48,7 @@ async def get_user_stats(
             SELECT
                 ds.id,
                 ds.status,
-                ds.human_side,
+                ds.human_role as human_side,
                 ar.winning_team,
                 ar.gov_total_score,
                 ar.opp_total_score
