@@ -191,8 +191,13 @@ WCM Results: {wcm_summary}
 Pillar Breakdown: {pillar_breakdown}
 Speaker Scores: {speaker_scores}
 
+CRITICAL INSTRUCTION FOR DETERMINING THE WINNER:
+The ULTIMATE WINNER of the debate is strictly determined by the total points in the Pillar Breakdown (Matter + Manner + Method + Role). 
+You MUST look at the Pillar Breakdown, sum the points for Government and Opposition, and the team with the higher total is the official winner. 
+Your summary MUST declare this team as the winner, even if the other team won the WCM Net Logic Score. If the totals are equal, declare a tie.
+
 Write a brief (150-200 word) adjudication statement explaining:
-1. Which team won and why
+1. Which team won (based strictly on the Pillar Breakdown totals) and why
 2. The key decision points (top 2-3 clashes)
 3. Any standout performances
 4. One development each team should work on
