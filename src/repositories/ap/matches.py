@@ -402,6 +402,70 @@ class APMatchRepository:
             db.rollback()
             logger.error(f"Failed to create turn for session {session_id}: {str(e)}")
             raise
+    
+    @staticmethod
+    def update_turn_timing(
+        db: Session,
+        match_id: str,
+        turn_index: int,
+        duration_seconds: float
+    ) -> Optional[Turn]:
+        """
+        Update turn timing with duration and end timestamp.
+        
+        Called when AI_THOUGHT_COMPLETE callback is received.
+        Calculates and persists turn duration to database for analytics.
+        
+        Args:
+            db (Session): Database session
+            match_id (str): UUID of DebateSession (match)
+            turn_index (int): Turn number (0-indexed)
+            duration_seconds (float): Duration of AI thinking/speaking in seconds
+        
+        Returns:
+            Optional[Turn]: Updated turn record, or None if not found
+        
+        Raises:
+            Exception: If database operation fails
+        """
+        try:
+            # Find turn by session_id and turn_number
+            turn = db.query(Turn).filter(
+                Turn.session_id == UUID(match_id),
+                Turn.turn_number == turn_index
+            ).first()
+            
+            if not turn:
+                logger.warning(
+                    f"Turn not found for update: match={match_id}, turn_index={turn_index}"
+                )
+                return None
+            
+            # Only update if not already set (idempotent)
+            if not turn.ended_at:
+                turn.ended_at = datetime.now(timezone.utc)
+                turn.duration_seconds = int(duration_seconds)
+                
+                db.commit()
+                db.refresh(turn)
+                
+                logger.info(
+                    f"Turn timing updated: {turn.id} "
+                    f"(duration: {turn.duration_seconds}s, ended_at: {turn.ended_at})"
+                )
+                return turn
+            else:
+                logger.debug(
+                    f"Turn {turn.id} already has ended_at set. Skipping idempotent update."
+                )
+                return turn
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(
+                f"Failed to update turn timing for match {match_id}, turn {turn_index}: {str(e)}"
+            )
+            raise
 
 
 def log_ai_call(

@@ -121,13 +121,14 @@ async def generate_ai_response(
         response = await debater.orchestrate_debater_response(
             transcript=transcript,
             motion=motion_text,
-            speaker_role=speaker_role,  # Full AP role name
+            speaker_role=speaker_role,  
             speaker_id=speaker_id,
             speaker_side=speaker_side,
             difficulty_level=skill_level,
             personality_trait="balanced",
             session_id=match_id,
-            channel=channel
+            channel=channel,
+            turn_index=state.current_turn_index
         )
 
         logger.info(
@@ -149,11 +150,9 @@ async def generate_ai_response(
             f"transcript. Total turns: {len(state.transcript)}"
         )
 
-        # Save updated state back to Redis
         await state_manager.update_state(state)
         logger.debug(f"[AI] State persisted to Redis for match {match_id}")
 
-        # STEP 4: Persist response to database (permanent record)
         db = SessionLocal()
         turn = match_repository.create_turn(
             db=db,
@@ -166,14 +165,9 @@ async def generate_ai_response(
         )
         logger.info(f"[AI] Turn record created in database: {turn.id}")
 
-        db.commit()   # Makes the turn record permanent in the database
+        db.commit()   
         logger.debug(f"[AI] Turn record committed to database: {turn.id}")
 
-       
-        # We no longer advance the turn here!
-        # The frontend will send {"action": "END_TURN"} once the TTS audio 
-        # queue is fully exhausted. The Go gateway will then increment the turn
-        # and publish TURN_CHANGED, which will trigger the next speaker.
         logger.info(f"[AI] Text generation complete. Waiting for frontend to finish audio playback and send END_TURN...")
 
         return response
