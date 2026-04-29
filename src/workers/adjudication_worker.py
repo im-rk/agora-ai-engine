@@ -211,8 +211,8 @@ def _format_transcript(transcript_list: list) -> str:
     lines = []
     for item in transcript_list:
         if isinstance(item, dict):
-            role = item.get("role", "Unknown")
-            text = item.get("text", "")
+            role = item.get("speaker_role", "Unknown")
+            text = item.get("content", "")
         else:
             # Fallback if not a dict
             continue

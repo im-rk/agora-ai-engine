@@ -299,7 +299,8 @@ class DebaterAgent:
         temperature: float,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None,
-        channel: Optional[str] = None
+        channel: Optional[str] = None,
+        turn_index: Optional[int] = None
     ) -> str:
         """
         Phase 4: Generation - Stream response with callbacks.
@@ -485,7 +486,8 @@ class DebaterAgent:
             temperature=config.temperature,
             personality_trait=personality_trait,
             session_id=session_id,
-            channel=channel
+            channel=channel,
+            turn_index=turn_index
         )
         
         return response
