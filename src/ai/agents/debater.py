@@ -331,9 +331,7 @@ class DebaterAgent:
         # Create streaming callback handler
         callback = RedisStreamingCallbackHandler(
             redis_client=self.redis_client,
-            channel=channel,
-            match_id=session_id,
-            turn_index=turn_index
+            channel=channel
         )
         
         # Format evidence into readable ammo
@@ -411,8 +409,7 @@ class DebaterAgent:
         difficulty_level: Optional[str] = None,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None,
-        channel: Optional[str] = None,
-        turn_index: Optional[int] = None
+        channel: Optional[str] = None
     ) -> str:
         """
         Main orchestrator: Execute all 4 phases sequentially.
@@ -435,9 +432,8 @@ class DebaterAgent:
             speaker_side: Team side ("Government" or "Opposition")
             difficulty_level: Difficulty target (easy/medium/hard or beginner/intermediate/advanced)
             personality_trait: Optional persona (e.g., "aggressive", "analytical")
-            session_id: Debate session ID for logging all LLM calls and turn timing updates
+            session_id: Debate session ID for logging all LLM calls
             channel: Custom Redis channel (auto-generated if None)
-            turn_index: Turn number for timing updates in callback
             
         Returns:
             Complete debate response string with tokens published to Redis

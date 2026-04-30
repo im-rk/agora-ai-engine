@@ -127,8 +127,7 @@ async def generate_ai_response(
             difficulty_level=skill_level,
             personality_trait="balanced",
             session_id=match_id,
-            channel=channel,
-            turn_index=state.current_turn_index
+            channel=channel
         )
 
         logger.info(
