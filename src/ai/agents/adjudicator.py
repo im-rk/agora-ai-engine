@@ -95,7 +95,7 @@ class AdjudicatorAgent:
         Returns:
             List of Clash objects with theme, description, positions
         """
-        llm = get_groq_client(streaming=False, temperature=0.2)
+        llm = get_groq_client(streaming=False, temperature=0.2).bind(response_format={"type": "json_object"})
 
         prompt = [
             SystemMessage(content=MACRO_CLASH_EXTRACTION_PROMPT.format(
@@ -166,7 +166,7 @@ class AdjudicatorAgent:
         Returns:
             Tuple of (WCM clash list, Net Logic Score)
         """
-        llm = get_groq_client(streaming=False, temperature=0.2)
+        llm = get_groq_client(streaming=False, temperature=0.2).bind(response_format={"type": "json_object"})
 
         clashes_json = json.dumps([
             {
@@ -266,7 +266,7 @@ class AdjudicatorAgent:
         Returns:
             Dict with pillar scores and breakdown for both teams
         """
-        llm = get_groq_client(streaming=False, temperature=0.3)
+        llm = get_groq_client(streaming=False, temperature=0.3).bind(response_format={"type": "json_object"})
 
         wcm_matrix_json = json.dumps([
             {
@@ -358,7 +358,7 @@ class AdjudicatorAgent:
         Returns:
             Dict with speaker scores and feedback
         """
-        llm = get_groq_client(streaming=False, temperature=0.3)
+        llm = get_groq_client(streaming=False, temperature=0.3).bind(response_format={"type": "json_object"})
 
         clashes_json = json.dumps([
             {
@@ -442,7 +442,7 @@ class AdjudicatorAgent:
         Returns:
             Dict with adjudication statement and key decisions
         """
-        llm = get_groq_client(streaming=False, temperature=0.4)
+        llm = get_groq_client(streaming=False, temperature=0.4).bind(response_format={"type": "json_object"})
 
         prompt = [
             SystemMessage(content=FINAL_ADJUDICATION_SUMMARY_PROMPT.format(
