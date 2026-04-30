@@ -209,6 +209,59 @@ async def start_redis_consumer():
                                     f"[CONSUMER] Previous speaker ({previous_turn_index}): "
                                     f"{previous_speaker.role} (AI - skip persistence)"
                                 )
+                    
+                    # Update AI turn timing if frontend provided it
+                    if state.current_turn_index > 0:
+                        previous_turn_index = state.current_turn_index - 1
+                        if previous_turn_index < len(state.schedule):
+                            previous_speaker = state.schedule[previous_turn_index]
+                            
+                            if previous_speaker.player_type == "ai":
+                                # ✅ Extract frontend-measured timing from TURN_CHANGED event
+                                ai_speech_duration_ms = data.get("ai_speech_duration_ms")
+                                ai_speech_start_time_utc = data.get("ai_speech_start_time_utc")
+                                ai_speech_end_time_utc = data.get("ai_speech_end_time_utc")
+                                
+                                if ai_speech_duration_ms is not None:
+                                    logger.info(
+                                        f"[CONSUMER] Received AI speech timing for match {match_id}, "
+                                        f"turn {previous_turn_index}: {ai_speech_duration_ms}ms"
+                                    )
+                                    
+                                    try:
+                                        db = SessionLocal()
+                                        
+                                        # Determine repository based on match format
+                                        match_data_ap = APMatchRepository.get_match_with_motion(db, match_id)
+                                        match_repository = APMatchRepository
+                                        
+                                        if not match_data_ap:
+                                            from src.repositories.bp.matches import BPMatchRepository
+                                            match_repository = BPMatchRepository
+                                        
+                                        # Update turn with frontend timing
+                                        duration_seconds = ai_speech_duration_ms / 1000.0
+                                        match_repository.update_turn_timing(
+                                            db=db,
+                                            match_id=match_id,
+                                            turn_index=previous_turn_index,
+                                            duration_seconds=duration_seconds,
+                                            started_at=ai_speech_start_time_utc,
+                                            ended_at=ai_speech_end_time_utc
+                                        )
+                                        
+                                        logger.info(
+                                            f"[CONSUMER] AI turn timing updated for match {match_id}, "
+                                            f"turn {previous_turn_index}: {duration_seconds:.2f}s "
+                                            f"(frontend-measured)"
+                                        )
+                                        db.close()
+                                    except Exception as e:
+                                        logger.error(
+                                            f"[CONSUMER] Failed to update AI turn timing: {e}"
+                                        )
+                                        if db:
+                                            db.close()
 
                     # Check if debate is complete
                     if state.current_turn_index >= len(state.schedule):
@@ -281,51 +334,6 @@ async def start_redis_consumer():
                 # EVENT: Other - Match finished or unrecognized action
                 else:
                     logger.debug(f"[CONSUMER] Match {match_id} is finished!")
-                
-                # EVENT: AI_THOUGHT_COMPLETE - Update turn timing from AI callback
-                if event_type == "AI_THOUGHT_COMPLETE":
-                    duration_ms = data.get("duration_ms")
-                    turn_index = data.get("turn_index")
-                    
-                    if match_id and turn_index is not None and duration_ms is not None:
-                        logger.info(
-                            f"[CONSUMER] Received AI_THOUGHT_COMPLETE for match {match_id}, "
-                            f"turn {turn_index}, duration {duration_ms}ms"
-                        )
-                        
-                        try:
-                            db = SessionLocal()
-                            from datetime import datetime, timezone
-                            
-                            # Determine repository based on match format
-                            match_data_ap = APMatchRepository.get_match_with_motion(db, match_id)
-                            match_repository = APMatchRepository
-                            
-                            if not match_data_ap:
-                                from src.repositories.bp.matches import BPMatchRepository
-                                match_data = BPMatchRepository.get_match_with_motion(db, match_id)
-                                match_repository = BPMatchRepository
-                            
-                            # Update turn with end time and duration
-                            duration_seconds = duration_ms / 1000.0
-                            match_repository.update_turn_timing(
-                                db=db,
-                                match_id=match_id,
-                                turn_index=turn_index,
-                                duration_seconds=duration_seconds
-                            )
-                            
-                            logger.info(
-                                f"[CONSUMER] Turn timing updated for match {match_id}, "
-                                f"turn {turn_index}: {duration_seconds:.2f}s"
-                            )
-                            db.close()
-                        except Exception as e:
-                            logger.error(
-                                f"[CONSUMER] Failed to update turn timing: {e}"
-                            )
-                            if db:
-                                db.close()
 
             except json.JSONDecodeError:
                 pass
