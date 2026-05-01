@@ -107,6 +107,15 @@ async def run_adjudication_worker(
             "key_decision_3": "Unavailable"
         }
 
+        # Fix validation errors where LLM returns key_decision as a dict instead of a string
+        summary_raw = result_dict.get("summary") or fallback_summary
+        for k in ["key_decision_1", "key_decision_2", "key_decision_3"]:
+            if k in summary_raw and not isinstance(summary_raw[k], str) and summary_raw[k] is not None:
+                try:
+                    summary_raw[k] = json.dumps(summary_raw[k])
+                except Exception:
+                    summary_raw[k] = str(summary_raw[k])
+
         result = AdjudicationResult(
             clashes=[MacroClash(**c) for c in result_dict.get("clashes", [])],
             wcm_matrix=[WCMEntry(**w) for w in result_dict.get("wcm_matrix", [])],
@@ -119,7 +128,7 @@ async def run_adjudication_worker(
                 pillar_reasoning=pillar_data.get("pillar_reasoning", "")
             ),
             speaker_scores=[SpeakerScore(**s) for s in speaker_scores_list],
-            summary=AdjudicationSummary(**(result_dict.get("summary") or fallback_summary)),
+            summary=AdjudicationSummary(**summary_raw),
             session_id=match_id
         )
 

@@ -28,6 +28,7 @@ import redis.asyncio as redis
 from src.core.config import settings
 from src.core.database import SessionLocal
 from src.engine.state import state_manager
+from src.repositories.ap.matches import APMatchRepository
 from .ai_response_generator import (
     generate_ai_response,
     persist_human_turn,
