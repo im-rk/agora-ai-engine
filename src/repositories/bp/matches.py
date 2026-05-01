@@ -428,7 +428,8 @@ class BPMatchRepository:
         turn_index: int,
         duration_seconds: float,
         started_at: Optional[str] = None,
-        ended_at: Optional[str] = None
+        ended_at: Optional[str] = None,
+        stt_confidence: Optional[float] = None
     ) -> Optional[Turn]:
         """
         Update turn timing with duration and end timestamp.
@@ -443,6 +444,7 @@ class BPMatchRepository:
             duration_seconds (float): Duration of speech in seconds (frontend-measured)
             started_at (Optional[str]): ISO timestamp when speech started (from frontend)
             ended_at (Optional[str]): ISO timestamp when speech ended (from frontend)
+            stt_confidence (Optional[float]): Average STT confidence (0.0 to 1.0)
         
         Returns:
             Optional[Turn]: Updated turn record, or None if not found
@@ -466,6 +468,8 @@ class BPMatchRepository:
             # Only update if not already set (idempotent)
             if not turn.ended_at:
                 turn.duration_seconds = int(duration_seconds)
+                if stt_confidence is not None:
+                    turn.stt_confidence_avg = stt_confidence
                 
                 # Use frontend-provided timestamps if available
                 if started_at:
@@ -479,6 +483,7 @@ class BPMatchRepository:
                 logger.info(
                     f"Turn timing updated: {turn.id} "
                     f"(duration: {turn.duration_seconds}s, "
+                    f"confidence: {turn.stt_confidence_avg}, "
                     f"started_at: {turn.started_at}, ended_at: {turn.ended_at})"
                 )
                 return turn

@@ -317,7 +317,8 @@ async def persist_human_turn(
                 turn_index=previous_turn_index,
                 duration_seconds=duration_seconds,
                 started_at=started_at,
-                ended_at=ended_at
+                ended_at=ended_at,
+                stt_confidence=timing_data.get("stt_confidence")
             )
         
         logger.info(
