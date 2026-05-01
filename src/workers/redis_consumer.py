@@ -28,6 +28,7 @@ import redis.asyncio as redis
 from src.core.config import settings
 from src.core.database import SessionLocal
 from src.engine.state import state_manager
+from src.repositories.ap.matches import APMatchRepository
 from .ai_response_generator import (
     generate_ai_response,
     persist_human_turn,
@@ -190,7 +191,12 @@ async def start_redis_consumer():
                                 persist_success = await persist_human_turn(
                                     client=client,
                                     match_id=match_id,
-                                    state=state
+                                    state=state,
+                                    timing_data={
+                                        "duration_ms": data.get("human_speech_duration_ms"),
+                                        "start_time_utc": data.get("human_speech_start_time_utc"),
+                                        "end_time_utc": data.get("human_speech_end_time_utc"),
+                                    }
                                 )
 
                                 if persist_success:

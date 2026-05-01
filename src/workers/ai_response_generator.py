@@ -188,7 +188,8 @@ async def generate_ai_response(
 async def persist_human_turn(
     client: redis.Redis,
     match_id: str,
-    state: object
+    state: object,
+    timing_data: dict = None
 ) -> bool:
     """
     Persist human speech to database when turn ends.
@@ -219,6 +220,7 @@ async def persist_human_turn(
         client: Redis async client
         match_id: Unique match identifier
         state: LiveMatchState object (current_turn_index already advanced by Go)
+        timing_data: Optional dictionary with human turn timing.
 
     Returns:
         bool: True if successfully persisted, False on error
@@ -275,6 +277,14 @@ async def persist_human_turn(
         logger.debug(f"[HUMAN] Creating database session...")
         db = SessionLocal()
         
+        duration_seconds = 0
+        started_at = None
+        ended_at = None
+        if timing_data and timing_data.get("duration_ms") is not None:
+            duration_seconds = timing_data["duration_ms"] / 1000.0
+            started_at = timing_data.get("start_time_utc")
+            ended_at = timing_data.get("end_time_utc")
+            
         logger.debug(
             f"[HUMAN] Saving turn to turns table:\n"
             f"  - session_id: {match_id}\n"
@@ -284,15 +294,31 @@ async def persist_human_turn(
             f"  - transcript_length: {len(human_text)} chars"
         )
         
-        turn = APMatchRepository.create_turn(
+        match_data_ap = APMatchRepository.get_match_with_motion(db, match_id)
+        match_repository = APMatchRepository
+        if not match_data_ap:
+            from src.repositories.bp.matches import BPMatchRepository
+            match_repository = BPMatchRepository
+            
+        turn = match_repository.create_turn(
             db=db,
             session_id=match_id,
             turn_number=previous_turn_index,
             speaker_role=previous_speaker.role,
             speaker_type=SpeakerType.HUMAN.value,  # "Human"
             transcript_text=human_text,  # VOICE TRANSCRIPT STORED HERE
-            duration_seconds=0  # Can be updated by Go if timing data available
+            duration_seconds=duration_seconds  # Initially set duration
         )
+        
+        if started_at or ended_at:
+            match_repository.update_turn_timing(
+                db=db,
+                match_id=match_id,
+                turn_index=previous_turn_index,
+                duration_seconds=duration_seconds,
+                started_at=started_at,
+                ended_at=ended_at
+            )
         
         logger.info(
             f"[HUMAN] SAVED to turns table:\n"
