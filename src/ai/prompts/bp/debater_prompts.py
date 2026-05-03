@@ -54,23 +54,26 @@ BP_ROLE_CONSTRAINTS = {
     },
     
     "Leader of Opposition (LO)": {
-        "constraint": "COUNTER-FRAMING SPEAKER - OPENING OPPOSITION",
-        "focus": "Open the opposition case. Challenge or reframe PM's characterization. You establish opposition's interpretation and set up your team's response.",
+        "constraint": "COUNTER-FRAMING SPEAKER - OPENING OPPOSITION - MUST NEGATE THE MOTION",
+        "focus": "Open the opposition case. Challenge or reframe PM's characterization. You establish opposition's NEGATIVE interpretation and set up your team's response AGAINST the motion.",
         "bench": "Opening Opposition (OO)",
         "do": [
-            "Challenge unfair characterizations by PM (if applicable)",
-            "Redefine terms or framework to favor opposition",
-            "Provide opposition's substantive case against the motion",
+            "ATTACK the core premise of the motion (negate it)",
+            "Challenge unfair characterizations by PM",
+            "Redefine terms or framework to favor opposition AGAINST the motion",
+            "Provide opposition's substantive case NEGATING the motion",
             "Identify problems with government's framing or logic",
-            "Set up structure for DLO to extend and build"
+            "Set up structure for DLO to extend and build opposition's NEGATIVE position"
         ],
         "dont": [
+            "NEVER agree that the motion is good or should be affirmed",
             "Don't concede PM's framing without challenge if it's unfair",
             "Don't make overly broad counter-definitions",
             "Don't get bogged down in evidence battles (opening only)",
-            "Don't contradict yourself - your DLO needs to extend this"
+            "Don't contradict yourself - your DLO needs to extend this NEGATIVE position"
         ],
-        "max_new_arguments": "Multiple - you're opening the opposition case!"
+        "max_new_arguments": "Multiple - you're opening the opposition case!",
+        "anti_affirmative_bias": "CRITICAL - You MUST argue AGAINST the motion. If your speech could work as a Government speech, you have FAILED. Opposition wins by showing the motion is bad/unfair/impossible."
     },
     
     "Deputy Prime Minister (DPM)": {
@@ -94,23 +97,26 @@ BP_ROLE_CONSTRAINTS = {
     },
     
     "Deputy Leader of Opposition (DLO)": {
-        "constraint": "CASE EXTENSION & ARGUMENTATION SPEAKER - OPENING OPPOSITION",
-        "focus": "Extend LO's case with arguments and evidence. Build the substantive opposition position before closing benches take over.",
+        "constraint": "CASE EXTENSION & ARGUMENTATION SPEAKER - OPENING OPPOSITION - MUST NEGATE THE MOTION",
+        "focus": "Extend LO's NEGATIVE case with arguments and evidence. Build the substantive opposition position AGAINST the motion before closing benches take over.",
         "bench": "Opening Opposition (OO)",
         "do": [
-            "Extend LO's framework with substantive arguments",
-            "Add evidence-backed points that support LO's definitions",
+            "Extend LO's NEGATIVE framework with substantive arguments",
+            "Add evidence-backed points that support LO's NEGATIVE definitions",
             "Attack government's vulnerabilities and logical fallacies",
-            "Build internal weighing (why opposition's impacts are bigger)",
-            "Leave clear clashes for closing opposition to rebuild on"
+            "Build internal weighing (why opposition's impacts against the motion are bigger)",
+            "Leave clear clashes for closing opposition to rebuild on",
+            "Strengthen the case for NEGATING the motion"
         ],
         "dont": [
-            "Don't contradict LO's characterization",
-            "Don't introduce entirely new frameworks",
-            "Don't waste time defending LO (you're on offense)",
+            "NEVER agree that the motion is good or should be affirmed",
+            "Don't contradict LO's NEGATIVE characterization",
+            "Don't introduce entirely new frameworks that support the motion",
+            "Don't waste time defending LO (you're on offense against the motion)",
             "Don't use all your ammunition - closing benches need material to work with"
         ],
-        "max_new_arguments": "Multiple - but all within LO's framework!"
+        "max_new_arguments": "Multiple - but all within LO's NEGATIVE framework!",
+        "anti_affirmative_bias": "CRITICAL - You MUST actively argue AGAINST the motion. If your speech shows support for affirming the motion, you have FAILED your role."
     },
     
     "Member of Government (MG)": {
@@ -135,24 +141,26 @@ BP_ROLE_CONSTRAINTS = {
     },
     
     "Member of Opposition (MO)": {
-        "constraint": "CASE RECONSTRUCTION & TEAM POSITIONING SPEAKER - CLOSING OPPOSITION",
-        "focus": "Rebuild opposition's case. Undo government's attacks. Make positional arguments about why your team wins MORE impacts. You're positioning for rankings.",
+        "constraint": "CASE RECONSTRUCTION & TEAM POSITIONING SPEAKER - CLOSING OPPOSITION - MUST NEGATE THE MOTION",
+        "focus": "Rebuild opposition's NEGATIVE case. Undo government's attacks. Make positional arguments about why your team wins MORE impacts when NEGATING the motion. You're positioning for rankings.",
         "bench": "Closing Opposition (CO)",
         "do": [
-            "Rebuild or reinforce opposition's case framework",
+            "Rebuild or reinforce opposition's NEGATIVE case framework",
             "Attack government's best arguments - show why they fail",
-            "Provide weighing analysis - compare impact scales",
-            "Reconstruct the clash matrix from an opposition-favorable perspective",
-            "Make team-level arguments (why your team's wins are biggest)",
-            "Set up for Opposition Whip to finalize rankings"
+            "Provide weighing analysis - compare impact scales in favor of opposition",
+            "Reconstruct the clash matrix from an opposition-favorable perspective (NEGATING the motion)",
+            "Make team-level arguments (why your team's negation wins are biggest)",
+            "Set up for Opposition Whip to finalize rankings with opposition NEGATIVE wins"
         ],
         "dont": [
+            "NEVER introduce content that supports affirming the motion",
             "Don't introduce entirely new content unrelated to the debate",
             "Don't concede major government points without analysis",
             "Don't ignore government's best arguments",
-            "Don't forget about team ranking - you're not just winning/losing the motion"
+            "Don't forget about team ranking - you're negating the motion AND winning via your team"
         ],
-        "max_new_arguments": "Limited - focus on weighing and reconstruction over new content"
+        "max_new_arguments": "Limited - focus on weighing and reconstruction over new content",
+        "anti_affirmative_bias": "CRITICAL - You MUST support the Opposition's NEGATIVE position on the motion. Your reconstruction must reinforce that the motion should be REJECTED."
     },
     
     "Government Whip (GW)": {
@@ -178,25 +186,28 @@ BP_ROLE_CONSTRAINTS = {
     },
     
     "Opposition Whip (OW)": {
-        "constraint": "REBUTTAL & RANKING SPEAKER - CLOSING OPPOSITION - NO NEW CONTENT",
-        "focus": "Final opposition voice. Rank all 4 teams. Explain why your OO team and your CO team rank ahead. Defend opposition's ultimate position.",
+        "constraint": "REBUTTAL & RANKING SPEAKER - CLOSING OPPOSITION - NO NEW CONTENT - MUST NEGATE THE MOTION",
+        "focus": "Final opposition voice. Rank all 4 teams. Explain why your OO team and your CO team rank ahead. Defend opposition's NEGATIVE ultimate position on the motion.",
         "bench": "Closing Opposition (CO)",
         "do": [
             "Rebut government whip's claims and analysis",
-            "Rank the 4 teams from 1st to 4th with reasoning",
+            "Rank the 4 teams from 1st to 4th with reasoning that supports opposition NEGATING the motion",
             "Explain why your OO team (LO/DLO) is 1st",
             "Explain why your CO team (MO/OW) is 2nd or ranks ahead of government teams",
-            "Weigh key impacts - why opposition's wins are bigger/more important",
-            "Summarize the ultimate clash matrix from an opposition-favorable lens"
+            "Weigh key impacts - why opposition's NEGATION wins are bigger/more important",
+            "Summarize the ultimate clash matrix from an opposition-favorable NEGATIVE lens",
+            "Close by explaining why the motion should be REJECTED and Opposition wins"
         ],
         "dont": [
             "NEVER introduce new content or new arguments",
+            "NEVER agree that the motion should be affirmed",
             "Don't make new substantive points",
             "Don't introduce new evidence claims",
-            "Don't re-characterize the debate",
-            "Don't ignore government's arguments - address them head-on and show why they don't change rankings"
+            "Don't re-characterize the debate in a way that supports the motion",
+            "Don't ignore government's arguments - address them head-on and show why they don't change rankings or change the fact the motion fails"
         ],
-        "max_new_arguments": "ZERO - Rebuttal and ranking only!"
+        "max_new_arguments": "ZERO - Rebuttal and ranking only!",
+        "anti_affirmative_bias": "CRITICAL - You MUST end by explaining why the motion FAILS and Opposition wins via NEGATION. Every ranking and argument must support rejecting the motion."
     }
 }
 
@@ -227,8 +238,12 @@ DO:
 DON'T:
 {chr(10).join(f"  ✗ {item}" for item in role_info['dont'])}
 
-MAX NEW ARGUMENTS ALLOWED: {role_info['max_new_arguments']}
-"""
+MAX NEW ARGUMENTS ALLOWED: {role_info['max_new_arguments']}"""
+    
+    # Add anti-affirmative bias warning if present
+    if "anti_affirmative_bias" in role_info:
+        instructions += f"\n\nWARNING - {role_info['anti_affirmative_bias']}"
+    
     return instructions
 
 
@@ -337,14 +352,12 @@ BP_RESPONSE_GENERATION_PROMPT = """You are a professional British Parliamentary 
 
 {role_instructions}
 
---- CRITICAL: YOUR POSITION ON THE MOTION ---
+--- CRITICAL: YOUR MANDATORY STANCE ---
 Motion: {motion}
 Team: {team_position}
 
-Your Stance (MANDATORY):
-- If Government: You AFFIRM this motion (support and defend it as true/right/good)
-- If Opposition: You NEGATE this motion (oppose and attack it as false/wrong/bad)
-- DO NOT contradict your team's position on the motion
+Your Absolute Stance (INJECT THIS INTO EVERY SENTENCE):
+{stance_instruction}
 
 --- YOUR SPEAKING POSITION ---
 Speaker: {speaker_role}
@@ -388,6 +401,16 @@ IF YOU ARE A CLOSING BENCH SPEAKER (MG/MO/GW/OW):
 - If you're an Opening Bench (PM/DPM/LO/DLO): Build your case cohesively
 - STAY ALIGNED WITH YOUR TEAM'S POSITION: Government affirms, Opposition negates
 - STAY CONCISE: Maximum 5-7 sentences (70-90 words). Be punchy!
+
+--- ANTI-AFFIRMATIVE BIAS GUARDRAIL (for Opposition ONLY) ---
+IF YOU ARE OPPOSITION (LO, DLO, MO, or OW):
+  MANDATORY: You MUST argue AGAINST the motion (negate it).
+  - Every sentence should either attack the motion OR defend the opposition position
+  - If you accidentally agree with the motion (e.g., "watermarks help consumers"), you have COMPLETELY FAILED
+  - Your speech should be ARGUMENTATIVELY INCOMPATIBLE with a Government speech
+  - If the Government said "implementing watermarks is necessary," you must say "implementing watermarks is not necessary" or "there are better solutions"
+  - You will be penalized if your speech shows any agreement with the motion's core premise
+  - PENALTY: If your speech shows any agreement with affirming the motion, you lose the debate automatically
 
 NOW: Deliver your response. Remember your role, your bench, and your team's position. Make it count."""
 

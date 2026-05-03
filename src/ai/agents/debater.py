@@ -93,7 +93,7 @@ class DebaterAgent:
         else:
             raise ValueError(f"Unsupported debate format: {self.format_type}. Use 'ap' or 'bp'.")
 
-    async def phase1_parse_clash_matrix(self, transcript: str, motion: str, session_id: Optional[str] = None) -> dict:
+    async def phase1_parse_clash_matrix(self, transcript: str, motion: str, speaker_side: str = "Government", session_id: Optional[str] = None) -> dict:
         """
         Phase 1: State Tracking - Parse transcript into clash matrix.
         
@@ -105,6 +105,7 @@ class DebaterAgent:
         Args:
             transcript: Full debate transcript so far
             motion: Debate motion
+            speaker_side: Team side ("Government" or "Opposition")
             session_id: Debate session ID for logging
             
         Returns:
@@ -113,7 +114,7 @@ class DebaterAgent:
         llm = get_groq_client(streaming=False, temperature=0.1)
 
         prompt = [
-            SystemMessage(content=self.clash_matrix_prompt.format(motion=motion)),
+            SystemMessage(content=self.clash_matrix_prompt.format(motion=motion, team_side=speaker_side)),
             HumanMessage(content=f"Parse this transcript:\n\n{transcript}")
         ]
 
@@ -154,6 +155,7 @@ class DebaterAgent:
         clash_matrix: dict,
         motion: str,
         speaker_role: str,
+        speaker_side: str,
         max_queries: int = 3,
         session_id: Optional[str] = None
     ) -> list[str]:
@@ -186,12 +188,8 @@ class DebaterAgent:
         else:
             role_constraint = f"Role: {speaker_role} - Advance your team's position with evidence"
 
-        # Determine team position based on normalized role
-        team_side = "Government" if "Government" in normalized_role or normalized_role.endswith("(PM)") or normalized_role.endswith("(DPM)") or normalized_role.endswith("(MG)") or normalized_role.endswith("(GW)") else "Opposition"
-        if "Leader of Opposition" in normalized_role or normalized_role.endswith("(LO)") or normalized_role.endswith("(DLO)") or normalized_role.endswith("(MO)") or normalized_role.endswith("(OW)"):
-            team_side = "Opposition"
-        
-        team_position = "You AFFIRM this motion (support it)" if team_side == "Government" else "You NEGATE this motion (oppose it)"
+        # Use speaker_side passed from orchestrator (no guessing)
+        team_position = "You AFFIRM this motion (support it)" if speaker_side == "Government" else "You NEGATE this motion (oppose it)"
 
         # Use format-specific query synthesis prompt
         prompt = [
@@ -293,6 +291,7 @@ class DebaterAgent:
         clash_matrix: dict,
         motion: str,
         speaker_role: str,
+        speaker_side: str,
         evidence: list[dict],
         speaker_id: str,
         persona_modifier: str,
@@ -345,18 +344,31 @@ class DebaterAgent:
         # Get format-specific role instructions using normalized role
         role_instructions = self.get_role_instructions(normalized_role)
         
-        # Determine team side from normalized role
-        team_side = "Government" if "Government" in normalized_role or normalized_role.endswith("(PM)") or normalized_role.endswith("(DPM)") or normalized_role.endswith("(MG)") or normalized_role.endswith("(GW)") else "Opposition"
-        if "Leader of Opposition" in normalized_role or normalized_role.endswith("(LO)") or normalized_role.endswith("(DLO)") or normalized_role.endswith("(MO)") or normalized_role.endswith("(OW)"):
-            team_side = "Opposition"
+        # ======= CRITICAL: INJECT THE STANCE INSTRUCTION =======
+        is_government = speaker_side == "Government"
+        if is_government:
+            stance_instruction = (
+                "YOU STRICTLY AFFIRM THIS MOTION. You must argue that this motion is correct, necessary, and good. "
+                "Every argument you make must support implementing/accepting the motion. "
+                "NEVER agree with the Opposition. You are fighting FOR the motion."
+            )
+        else:
+            stance_instruction = (
+                "YOU STRICTLY NEGATE THIS MOTION. You must fiercely attack the motion as dangerous, wrong, flawed, or unnecessary. "
+                "Every argument you make must argue AGAINST implementing/accepting the motion. "
+                "NEVER agree with the Government. You are fighting AGAINST the motion. "
+                "Challenge their characterization of what the motion even means."
+            )
+        # =========================================================
         
         # Assemble final prompt with format-specific template
         system_prompt = self.response_generation_prompt.format(
             role_instructions=role_instructions,
             motion=motion,
             speaker_role=normalized_role,
-            team_side=team_side,
-            team_position=team_side,
+            team_side=speaker_side,
+            team_position=speaker_side,
+            stance_instruction=stance_instruction,  # <-- NOW INJECTING THE STANCE
             personality=personality_trait or "balanced",
             clash_matrix=json.dumps(clash_matrix),
             evidence=evidence_text if evidence else "No specific evidence found."
@@ -365,6 +377,14 @@ class DebaterAgent:
             "\n\n--- DIFFICULTY PERSONA MODIFIER ---\n"
             f"{persona_modifier}"
         )
+        
+        # ======= DEBUG: Print the actual prompt being sent =======
+        print("\n" + "="*80)
+        print("DEBUG: FINAL PROMPT BEING SENT TO LLM")
+        print("="*80)
+        print(system_prompt)
+        print("="*80 + "\n")
+        # =========================================================
         
         messages = [
             SystemMessage(content=system_prompt),
@@ -441,7 +461,7 @@ class DebaterAgent:
             ValueError: If format_type was invalid during initialization
         """
         # Phase 1: State Tracking
-        clash_matrix = await self.phase1_parse_clash_matrix(transcript, motion, session_id)
+        clash_matrix = await self.phase1_parse_clash_matrix(transcript, motion, speaker_side, session_id)
 
         # Difficulty config (single source of truth)
         config: DebateDifficultyConfig = get_difficulty_config(difficulty_level or "")
@@ -458,6 +478,7 @@ class DebaterAgent:
             clash_matrix,
             motion,
             speaker_role,
+            speaker_side,
             config.max_search_queries,
             session_id,
         )
@@ -475,6 +496,7 @@ class DebaterAgent:
             clash_matrix=clash_matrix,
             motion=motion,
             speaker_role=speaker_role,
+            speaker_side=speaker_side,
             evidence=evidence,
             speaker_id=speaker_id,
             persona_modifier=config.persona_modifier,
