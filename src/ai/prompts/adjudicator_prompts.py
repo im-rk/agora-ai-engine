@@ -135,7 +135,7 @@ Output format (JSON only):
 }}
 
 Rules:
-1. Matter score: Award points based on NET_LOGIC_SCORE (winning team gets 20-25, losing gets 10-20)
+1. Matter score: Award points based on NET_LOGIC_SCORE. (NOTE: A positive Net Logic Score means Government won Matter and should get 20-25 points. A negative Net Logic Score means Opposition won Matter and should get 20-25 points. The losing team gets 10-20 points.)
 2. Manner, Method, Role: Each 0-25, independent of Matter
 3. Totals: Government total = matter + manner + method + role (same for Opposition)
 4. Each pillar score must explain the reasoning
@@ -181,8 +181,10 @@ Output format (JSON only):
 Rules:
 1. Final score = (argument + evidence + responsiveness + structure + persona) * 2
 2. Each component 0-10
-3. Provide constructive, specific feedback
-4. Output ONLY valid JSON."""
+3. TIME-TRAVEL RULE: The Prime Minister speaks FIRST. They cannot physically rebut the Opposition (they haven't spoken yet). DO NOT penalize the PM's "Responsiveness" score for lacking rebuttals. Instead, automatically grant the PM a high baseline (8-10) for responsiveness if they successfully establish the debate framework.
+4. QUOTE MANDATE: The "feedback" field MUST contain a direct, verbatim quote from that specific speaker's transcript. Generic feedback (e.g., "Good evidence", "Strong arguments") will be rejected. Example of good feedback: "Strong opening: 'We must consider the long-term economic impact' shows strategic thinking."
+5. Provide constructive, specific feedback
+6. Output ONLY valid JSON."""
 
 
 FINAL_ADJUDICATION_SUMMARY_PROMPT = """You are writing the final adjudication summary.
@@ -192,7 +194,7 @@ Pillar Breakdown: {pillar_breakdown}
 Speaker Scores: {speaker_scores}
 
 Write a brief (150-200 word) adjudication statement explaining:
-1. Which team won and why
+1. Which team won and why (CRITICAL RULE: The winner is STRICTLY determined by the higher average Speaker Score from the {speaker_scores} data. Do not guess or use your own judgment. Look at the numbers.)
 2. The key decision points (top 2-3 clashes)
 3. Any standout performances
 4. One development each team should work on
@@ -210,4 +212,5 @@ Format:
 Rules:
 1. Output ONLY valid JSON.
 2. Do not include markdown code blocks like ```json.
-3. Do not include any text or explanations outside the JSON object."""
+3. Do not include any text or explanations outside the JSON object.
+4. Winner determination: Compare Government's average speaker score to Opposition's average speaker score. Higher score wins. No exceptions, no guessing."""
