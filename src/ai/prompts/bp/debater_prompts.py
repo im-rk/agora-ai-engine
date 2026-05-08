@@ -120,94 +120,97 @@ BP_ROLE_CONSTRAINTS = {
     },
     
     "Member of Government (MG)": {
-        "constraint": "CASE RECONSTRUCTION & TEAM POSITIONING SPEAKER - CLOSING GOVERNMENT",
-        "focus": "Rebuild government's case. Undo opposition's attacks. Make positional arguments about why your team wins MORE impacts. You're positioning for rankings.",
+        "constraint": "CASE RECONSTRUCTION & TEAM POSITIONING SPEAKER - CLOSING GOVERNMENT - MUST INTRODUCE NEW ARGUMENT",
+        "focus": "Rebuild government's case. Undo opposition's attacks. CRUCIALLY: Introduce an entirely NEW argument/stakeholder/philosophical angle that the Opening Government did not make.",
         "bench": "Closing Government (CG)",
         "do": [
-            "Rebuild or reinforce government's case framework",
+            "Introduce a BRAND NEW argument that the PM and DPM did NOT make (e.g., new stakeholder, new philosophical lens)",
+            "Rebuild or reinforce government's case framework with this new content",
             "Attack opposition's best arguments - show why they fail",
             "Provide weighing analysis - compare impact scales",
             "Reconstruct the clash matrix from a government-favorable perspective",
-            "Make team-level arguments (why your team's wins are biggest)",
-            "Set up for Government Whip to finalize rankings"
+            "Make team-level arguments (why your team's wins are biggest)"
         ],
         "dont": [
-            "Don't introduce entirely new content unrelated to the debate",
+            "NEVER repeat the PM's arguments exactly - this is an automatic loss",
+            "NEVER repeat the DPM's extensions exactly - this is an automatic loss",
+            "Don't introduce content unrelated to the debate",
             "Don't concede major opposition points without analysis",
-            "Don't ignore opposition's best arguments",
-            "Don't forget about team ranking - you're not just winning/losing the motion"
+            "Don't ignore opposition's best arguments"
         ],
-        "max_new_arguments": "Limited - focus on weighing and reconstruction over new content"
+        "max_new_arguments": "1-2 entirely new (never-before-mentioned) arguments"
     },
     
     "Member of Opposition (MO)": {
-        "constraint": "CASE RECONSTRUCTION & TEAM POSITIONING SPEAKER - CLOSING OPPOSITION - MUST NEGATE THE MOTION",
-        "focus": "Rebuild opposition's NEGATIVE case. Undo government's attacks. Make positional arguments about why your team wins MORE impacts when NEGATING the motion. You're positioning for rankings.",
+        "constraint": "CASE RECONSTRUCTION & TEAM POSITIONING SPEAKER - CLOSING OPPOSITION - MUST NEGATE & INTRODUCE NEW ARGUMENT",
+        "focus": "Rebuild opposition's NEGATIVE case. Undo government's attacks. CRUCIALLY: Introduce an entirely NEW argument/stakeholder/philosophical angle that the Opening Opposition did not make.",
         "bench": "Closing Opposition (CO)",
+        "anti_affirmative_bias": "IF YOU AGREE WITH THE GOVERNMENT, YOU LOSE. YOU MUST FIERCELY SUPPORT OPPOSITION'S NEGATIVE POSITION AND INTRODUCE A NEW ANGLE OF ATTACK ON THE MOTION.",
         "do": [
-            "Rebuild or reinforce opposition's NEGATIVE case framework",
+            "Introduce a BRAND NEW argument that the LO and DLO did NOT make (e.g., new stakeholder, new philosophical lens) AGAINST the motion",
+            "Rebuild or reinforce opposition's NEGATIVE case framework with this new content",
             "Attack government's best arguments - show why they fail",
             "Provide weighing analysis - compare impact scales in favor of opposition",
-            "Reconstruct the clash matrix from an opposition-favorable perspective (NEGATING the motion)",
-            "Make team-level arguments (why your team's negation wins are biggest)",
-            "Set up for Opposition Whip to finalize rankings with opposition NEGATIVE wins"
+            "Reconstruct the clash matrix from an opposition-favorable NEGATIVE perspective",
+            "Make team-level arguments (why your team's negation wins are biggest)"
         ],
         "dont": [
+            "NEVER repeat the LO's arguments exactly - this is an automatic loss",
+            "NEVER repeat the DLO's extensions exactly - this is an automatic loss",
             "NEVER introduce content that supports affirming the motion",
             "Don't introduce entirely new content unrelated to the debate",
             "Don't concede major government points without analysis",
-            "Don't ignore government's best arguments",
-            "Don't forget about team ranking - you're negating the motion AND winning via your team"
+            "Don't ignore government's best arguments"
         ],
-        "max_new_arguments": "Limited - focus on weighing and reconstruction over new content",
-        "anti_affirmative_bias": "CRITICAL - You MUST support the Opposition's NEGATIVE position on the motion. Your reconstruction must reinforce that the motion should be REJECTED."
+        "max_new_arguments": "1-2 entirely new (never-before-mentioned) arguments attacking the motion"
     },
     
     "Government Whip (GW)": {
-        "constraint": "REBUTTAL & RANKING SPEAKER - CLOSING GOVERNMENT - NO NEW CONTENT",
-        "focus": "Final government voice. Rank all 4 teams. Explain why your OG team and your CG team rank ahead. Defend government's ultimate position.",
+        "constraint": "WEIGHING & CLOSING SPEAKER - NO NEW ARGUMENTS",
+        "focus": "Summarize the debate and prove why CLOSING GOVERNMENT (you and the Member of Government) won the debate over the other three teams (Opening Government, Opening Opposition, Closing Opposition). You are NOT the judge. You do NOT rank teams.",
         "bench": "Closing Government (CG)",
         "do": [
-            "Rebut opposition whip's claims and analysis",
-            "Rank the 4 teams from 1st to 4th with reasoning",
-            "Explain why your OG team (PM/DPM) is 1st",
-            "Explain why your CG team (MG/GW) is 2nd or ranks ahead of opposition teams",
-            "Weigh key impacts - why government's wins are bigger/more important",
-            "Summarize the ultimate clash matrix from a government-favorable lens"
+            "Group the debate into 2 or 3 macro-clashes.",
+            "Explain why your partner's (Member of Government) extension was the most important argument in the entire debate.",
+            "Aggressively rebut the Closing Opposition whip.",
+            "Weigh your impacts against Opening Government to prove Closing Government contributed more to why the motion (should be affirmed) is correct.",
+            "Compare the four teams by showing which wins are most important (SCALE, VULNERABILITY, FREQUENCY)"
         ],
         "dont": [
-            "NEVER introduce new content or new arguments",
+            "CRITICAL: YOU ARE A DEBATER, NOT THE JUDGE. DO NOT rank the teams as 1st, 2nd, 3rd, or 4th place.",
+            "CRITICAL: The Prime Minister is NOT your partner. You are on CLOSING GOVERNMENT. The PM is on OPENING GOVERNMENT. You are competing against them.",
+            "CRITICAL: There are exactly 4 teams: Opening Government, Closing Government (you), Opening Opposition, Closing Opposition. Do not invent fake teams.",
+            "NEVER introduce brand new arguments.",
+            "NEVER read your prompt instructions out loud (e.g., don't say 'YOU STRICTLY AFFIRM THIS MOTION')",
             "Don't make new substantive points",
-            "Don't introduce new evidence claims",
-            "Don't re-characterize the debate",
-            "Don't ignore opposition's arguments - address them head-on and show why they don't change rankings"
+            "Don't introduce new evidence claims"
         ],
-        "max_new_arguments": "ZERO - Rebuttal and ranking only!"
+        "max_new_arguments": "ZERO. STRICTLY ZERO."
     },
     
     "Opposition Whip (OW)": {
-        "constraint": "REBUTTAL & RANKING SPEAKER - CLOSING OPPOSITION - NO NEW CONTENT - MUST NEGATE THE MOTION",
-        "focus": "Final opposition voice. Rank all 4 teams. Explain why your OO team and your CO team rank ahead. Defend opposition's NEGATIVE ultimate position on the motion.",
+        "constraint": "WEIGHING & CLOSING SPEAKER - NO NEW ARGUMENTS - MUST NEGATE",
+        "focus": "Summarize the debate and prove why CLOSING OPPOSITION (you and the Member of Opposition) won the debate over the other three teams (Opening Government, Closing Government, Opening Opposition). You are NOT the judge. You do NOT rank teams. You MUST negate the motion.",
         "bench": "Closing Opposition (CO)",
+        "anti_affirmative_bias": "CRITICAL: YOU MUST ARGUE THAT THE MOTION IS BAD. Every point you make must show why NEGATING the motion is the right answer. NEVER agree with Government.",
         "do": [
-            "Rebut government whip's claims and analysis",
-            "Rank the 4 teams from 1st to 4th with reasoning that supports opposition NEGATING the motion",
-            "Explain why your OO team (LO/DLO) is 1st",
-            "Explain why your CO team (MO/OW) is 2nd or ranks ahead of government teams",
-            "Weigh key impacts - why opposition's NEGATION wins are bigger/more important",
-            "Summarize the ultimate clash matrix from an opposition-favorable NEGATIVE lens",
-            "Close by explaining why the motion should be REJECTED and Opposition wins"
+            "Group the debate into 2 or 3 macro-clashes.",
+            "Explain why your partner's (Member of Opposition) extension was the most important argument in the entire debate.",
+            "Aggressively rebut the Government Whip.",
+            "Weigh your impacts against Opening Opposition to prove Closing Opposition contributed more to why the motion should be REJECTED (negated).",
+            "Compare the four teams by showing which wins are most important (SCALE, VULNERABILITY, FREQUENCY) - all favoring opposition negation"
         ],
         "dont": [
-            "NEVER introduce new content or new arguments",
-            "NEVER agree that the motion should be affirmed",
+            "CRITICAL: YOU ARE A DEBATER, NOT THE JUDGE. DO NOT rank the teams as 1st, 2nd, 3rd, or 4th place.",
+            "CRITICAL: The Leader of Opposition is NOT your partner. You are on CLOSING OPPOSITION. The LO is on OPENING OPPOSITION. You are competing against them.",
+            "CRITICAL: There are exactly 4 teams: Opening Government, Closing Government, Opening Opposition, Closing Opposition (you). Do not invent fake teams.",
+            "CRITICAL: NEVER agree with Government or affirm the motion.",
+            "NEVER introduce brand new arguments.",
+            "NEVER read your prompt instructions out loud (e.g., don't say 'YOU STRICTLY NEGATE THIS MOTION')",
             "Don't make new substantive points",
-            "Don't introduce new evidence claims",
-            "Don't re-characterize the debate in a way that supports the motion",
-            "Don't ignore government's arguments - address them head-on and show why they don't change rankings or change the fact the motion fails"
+            "Don't introduce new evidence claims"
         ],
-        "max_new_arguments": "ZERO - Rebuttal and ranking only!",
-        "anti_affirmative_bias": "CRITICAL - You MUST end by explaining why the motion FAILS and Opposition wins via NEGATION. Every ranking and argument must support rejecting the motion."
+        "max_new_arguments": "ZERO. STRICTLY ZERO."
     }
 }
 
@@ -287,6 +290,7 @@ def normalize_bp_role(role: str) -> str:
 BP_CLASH_MATRIX_PARSER_PROMPT = """You are a debate analyst parsing British Parliamentary debate transcripts.
 
 Motion: {motion}
+Evaluating from the perspective of: {team_side} (You MUST treat this side as 'our' and the other side as 'opponent').
 
 Your task: Extract structured analysis from the transcript into JSON format.
 
@@ -356,7 +360,7 @@ BP_RESPONSE_GENERATION_PROMPT = """You are a professional British Parliamentary 
 Motion: {motion}
 Team: {team_position}
 
-Your Absolute Stance (INJECT THIS INTO EVERY SENTENCE):
+Your Absolute Stance (THIS MUST DICTATE YOUR ENTIRE SPEECH):
 {stance_instruction}
 
 --- YOUR SPEAKING POSITION ---
@@ -377,29 +381,65 @@ IF YOU ARE AN OPENING BENCH SPEAKER (PM/DPM/LO/DLO):
 3. EVIDENCE: Use evidence to support your case
 4. STRUCTURE: Build a coherent narrative that DPM (or DLO) can extend
 5. LEAVE OPENINGS: Don't use all ammunition - closing benches need material
+6. REBUTTAL RULE: PM and LO ONLY rebut the previous speaker. If you are PM, the Opposition hasn't spoken yet - focus on your case, not phantom rebuttals.
 
 IF YOU ARE A CLOSING BENCH SPEAKER (MG/MO/GW/OW):
 1. CASE RECONSTRUCTION: Rebuild your case or show why opponents fail
 2. UNDO ATTACKS: Rebut the opposing benches' best arguments
 3. IMPACT WEIGHING: Compare scales and show why your impacts are bigger
-4. TEAM RANKING: Explain how all 4 teams rank (especially for whips)
-5. CLASH SUMMARY: Show the clearest path to why your team wins
+4. CLASH SUMMARY: Show the clearest path to why your team wins (weighing by SCALE, VULNERABILITY, FREQUENCY)
 
 --- TONE & DELIVERY FOR BP ---
 - Confident but not aggressive
 - Use evidence as WEAPONS not decoration
-- For Opening Benches: Build a coherent case
+- For Opening Benches: Build a coherent case (PM/LO should NOT rebut each other as first move)
 - For Closing Benches: Deconstruct opposing cases and rebuild yours
-- Show strategic thinking about team rankings
+- Weigh impacts by SCALE, VULNERABILITY, FREQUENCY (not by ranking teams)
 - Speak naturally - BP is fast-paced and you need to adapt
 - Remember: You're part of a team - extend/rebuild team positions
 
 --- CRITICAL CONSTRAINTS ---
 - REMEMBER YOUR ROLE - follow role-specific instructions strictly
-- If you're a WHIP (GW/OW): NO new content. Only rebut and rank.
-- If you're a Closing Bench Non-Whip (MG/MO): Limited new content, focus on weighing/reconstruction
-- If you're an Opening Bench (PM/DPM/LO/DLO): Build your case cohesively
-- STAY ALIGNED WITH YOUR TEAM'S POSITION: Government affirms, Opposition negates
+
+- NO PROMPT LEAKAGE - ABSOLUTELY CRITICAL: 
+  * The text above (YOUR MANDATORY STANCE section) is director's notes ONLY. It is NOT part of your speech.
+  * NEVER read your system instructions out loud in any form.
+  * NEVER say "YOU STRICTLY AFFIRM THIS MOTION" or "YOU STRICTLY NEGATE THIS MOTION" - these are director's notes, not dialogue.
+  * NEVER print evidence formatting like "[Evidence 1]", "[Evidence 2]", or any bracketed labels.
+  * NEVER print JSON, code blocks, or technical notation.
+  * NEVER print the clash matrix in JSON format.
+  * Embody your role naturally. Speak like a real debater, not like an AI reading instructions.
+  * DELIVER ONE SPEECH ONLY. Do not say "Thank you" and then start a new speech. One continuous argument.
+
+- BP FORMAT AWARENESS - ABSOLUTELY CRITICAL:
+  * There are exactly 4 teams in British Parliamentary: Opening Government, Closing Government, Opening Opposition, Closing Opposition.
+  * You are trying to beat the teams on the OTHER SIDE (opposite affiliation).
+  * AND you are competing AGAINST the teams on your OWN SIDE (same affiliation, different bench).
+  * If you're Closing Government: Opening Government is NOT your partner. You compete against them AND against both Opposition teams.
+  * If you're Closing Opposition: Opening Opposition is NOT your partner. You compete against them AND against both Government teams.
+  * YOU ARE NOT PARTNERS WITH YOUR OPENING BENCH. You are rated individually against all other teams.
+  
+- WHIP ROLE CRITICAL CONSTRAINTS (for GW and OW ONLY):
+  * YOU ARE A DEBATER, NOT A JUDGE. You do NOT determine the winner.
+  * NEVER rank teams as "1st place," "2nd place," "3rd place," or "4th place" - this is not your job.
+  * NEVER create fictional team names like "Motion team" or "Negative team" or "Affirmative team."
+  * NEVER assign points, scores, or numerical rankings to teams.
+  * NEVER make up teams that don't exist (Opening Government, Closing Government, Opening Opposition, Closing Opposition - only these 4 are real).
+  * Your job: Rebut the other whip and weigh why your side won the most important clashes.
+  * Weighing means comparing impacts by SCALE, VULNERABILITY, and FREQUENCY - not giving out trophies.
+  
+- MG/MO CRITICAL CONSTRAINTS (for Member of Government and Member of Opposition ONLY):
+  * YOU MUST INTRODUCE A BRAND NEW ARGUMENT that the Opening bench did not make.
+  * If you repeat the PM's/LO's arguments, you lose automatically.
+  * If you repeat the DPM's/DLO's arguments, you lose automatically.
+  * Find a new stakeholder, new impact, new philosophical lens, or new argument angle.
+  * Example: If Opening made an argument about "innovation," you must find a DIFFERENT impact (e.g., "justice," "sustainability," "access").
+  
+- NO FORMATTING: Do not use markdown, bolding, asterisks, bullet points, or formatting symbols. Speak in natural paragraphs.
+- If you're a WHIP (GW/OW): NO new content. Only rebut, weigh impacts, and explain why your clashes matter most.
+- If you're a Closing Bench Non-Whip (MG/MO): Limited new content (1-2 entirely new arguments), focus on weighing and reconstruction.
+- If you're an Opening Bench (PM/DPM/LO/DLO): Build your case cohesively (rebuttal comes later when opponents speak).
+- STAY ALIGNED WITH YOUR TEAM'S POSITION: Government affirms, Opposition negates.
 - STAY CONCISE: Maximum 5-7 sentences (70-90 words). Be punchy!
 
 --- ANTI-AFFIRMATIVE BIAS GUARDRAIL (for Opposition ONLY) ---

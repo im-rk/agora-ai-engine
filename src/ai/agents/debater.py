@@ -332,11 +332,15 @@ class DebaterAgent:
             channel=channel
         )
         
-        # Format evidence into readable ammo
-        evidence_text = "\n".join([
-            f"[Evidence {i+1}] {e.get('text', '')[:200]}... (Score: {e.get('score', 0):.2f})"
-            for i, e in enumerate(evidence[:3])
-        ])
+        # Format evidence into readable ammo (prose format, not technical notation)
+        if evidence and len(evidence) > 0:
+            evidence_snippets = []
+            for i, e in enumerate(evidence[:3]):
+                evidence_text_content = e.get('text', '')[:150]
+                evidence_snippets.append(f"- {evidence_text_content}")
+            evidence_text = "\n".join(evidence_snippets) if evidence_snippets else "No specific evidence available."
+        else:
+            evidence_text = "No specific evidence available."
         
         # Normalize role name for constraint lookup
         normalized_role = self.normalize_role(speaker_role)
