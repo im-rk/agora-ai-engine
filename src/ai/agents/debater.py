@@ -352,16 +352,22 @@ class DebaterAgent:
         is_government = speaker_side == "Government"
         if is_government:
             stance_instruction = (
-                "YOU STRICTLY AFFIRM THIS MOTION. You must argue that this motion is correct, necessary, and good. "
-                "Every argument you make must support implementing/accepting the motion. "
-                "NEVER agree with the Opposition. You are fighting FOR the motion."
+                "<stance_instructions>\n"
+                "Your team supports the motion. You must argue that this motion is correct, necessary, and good.\n"
+                "Every argument you make must support implementing or accepting the motion.\n"
+                "Never agree with the Opposition. You are fighting FOR the motion.\n"
+                "CRITICAL: Integrate this stance naturally into your arguments. DO NOT repeat these instructions verbatim, and DO NOT mechanically say 'I affirm this motion' repeatedly.\n"
+                "</stance_instructions>"
             )
         else:
             stance_instruction = (
-                "YOU STRICTLY NEGATE THIS MOTION. You must fiercely attack the motion as dangerous, wrong, flawed, or unnecessary. "
-                "Every argument you make must argue AGAINST implementing/accepting the motion. "
-                "NEVER agree with the Government. You are fighting AGAINST the motion. "
-                "Challenge their characterization of what the motion even means."
+                "<stance_instructions>\n"
+                "Your team opposes the motion. You must fiercely attack the motion as dangerous, wrong, flawed, or unnecessary.\n"
+                "Every argument you make must argue AGAINST implementing or accepting the motion.\n"
+                "Never agree with the Government. You are fighting AGAINST the motion.\n"
+                "Challenge their characterization of what the motion even means.\n"
+                "CRITICAL: Integrate this stance naturally into your arguments. DO NOT repeat these instructions verbatim, and DO NOT mechanically say 'I negate this motion' repeatedly.\n"
+                "</stance_instructions>"
             )
         # =========================================================
         
