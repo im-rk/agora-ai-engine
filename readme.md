@@ -1032,6 +1032,4 @@ If you use Agora AI Engine in research or production, please cite:
 
 **Built with 🧠 in Python · The Brain of Agora**
 
-*Crafted for IDL × Agentix · Hackathon 2026*
-
 </div>
