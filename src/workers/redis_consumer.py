@@ -22,6 +22,7 @@ Event Channel Pattern:
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 
 import redis.asyncio as redis
 
@@ -337,6 +338,122 @@ async def start_redis_consumer():
                             f"[CONSUMER] Turn index {state.current_turn_index} is beyond "
                             f"schedule length {len(state.schedule) if state.schedule else 0}"
                         )
+
+                # EVENT: DISCONNECT - User's WebSocket disconnected
+                elif action == "DISCONNECT":
+                    """User's WebSocket disconnected"""
+                    logger.warning(f"[CONSUMER] User DISCONNECT from match {match_id}")
+                    
+                    state = await state_manager.get_state(match_id)
+                    if not state:
+                        logger.warning(f"[CONSUMER] State not found for {match_id}")
+                        continue
+                    
+                    # Mark user as offline
+                    state.is_user_connected = False
+                    state.last_connected_at = int(datetime.now(timezone.utc).timestamp())
+                    
+                    # Get current speaker
+                    current_speaker = state.schedule[state.current_turn_index]
+                    
+                    if current_speaker.player_type == "human":
+                        # USER WAS SPEAKING: Pause the turn
+                        state.status = "PAUSED"
+                        logger.info(
+                            f"[CONSUMER] Paused human turn for {current_speaker.role} "
+                            f"(user offline, timer paused)"
+                        )
+                    else:
+                        # AI WAS SPEAKING: Let it finish naturally
+                        logger.info(
+                            f"[CONSUMER] AI speaking for {current_speaker.role}, "
+                            f"letting it finish (user offline but AI continues)"
+                        )
+                        # Don't change status, don't cancel task
+                        # AI keeps generating, tokens buffer in Redis
+                    
+                    # Persist state
+                    await state_manager.update_state(state)
+
+                # EVENT: REJOIN_MATCH - User reconnecting after disconnect
+                elif action == "REJOIN_MATCH":
+                    """User reconnecting after disconnect"""
+                    logger.info(f"[CONSUMER] User REJOIN for match {match_id}")
+                    
+                    state = await state_manager.get_state(match_id)
+                    if not state:
+                        await client.publish(channel, json.dumps({
+                            "event": "REJOIN_FAILED",
+                            "reason": "Match not found"
+                        }))
+                        continue
+                    
+                    if state.status in ["COMPLETED", "ABANDONED"]:
+                        await client.publish(channel, json.dumps({
+                            "event": "REJOIN_FAILED",
+                            "reason": "Match already finished"
+                        }))
+                        continue
+                    
+                    # ===== CRITICAL: Extend deadline if human was speaking =====
+                    current_speaker = state.schedule[state.current_turn_index]
+                    now = int(datetime.now(timezone.utc).timestamp())
+                    
+                    if current_speaker.player_type == "human" and state.status == "PAUSED":
+                        # User was speaking (timer was paused)
+                        # Extend deadline by offline duration
+                        offline_duration = now - state.last_connected_at
+                        state.turn_expires_at += offline_duration
+                        logger.info(
+                            f"[CONSUMER] Extended turn deadline by {offline_duration}s "
+                            f"for offline duration (user gets their time back)"
+                        )
+                    
+                    # Mark user as reconnected
+                    state.is_user_connected = True
+                    state.last_connected_at = now
+                    state.status = "IN_PROGRESS"
+                    await state_manager.update_state(state)
+                    
+                    # ===== CRITICAL: Send catch-up buffer if AI was generating =====
+                    if (current_speaker.player_type == "ai" and 
+                        state.ai_stream_status in ["STREAMING", "COMPLETED"] and
+                        state.active_stream_buffer):
+                        
+                        logger.info(
+                            f"[CONSUMER] Sending {len(state.active_stream_buffer)} char "
+                            f"catch-up buffer for {current_speaker.role}"
+                        )
+                        
+                        # Send ENTIRE cached speech at once
+                        await client.publish(channel, json.dumps({
+                            "event": "CATCH_UP_BUFFER",
+                            "text": state.active_stream_buffer,
+                            "is_complete": (state.ai_stream_status == "COMPLETED"),
+                            "speaker_role": current_speaker.role
+                        }))
+                    
+                    # Resume turn appropriately
+                    if current_speaker.player_type == "ai" and state.ai_stream_status == "IDLE":
+                        # Fresh AI turn, start generating
+                        logger.info(f"[CONSUMER] Starting AI turn for {current_speaker.role}")
+                        cancel_active_task(match_id)
+                        active_tasks[match_id] = asyncio.create_task(
+                            generate_ai_response(client, channel, match_id, state)
+                        )
+                    elif current_speaker.player_type == "human":
+                        # Human's turn, notify frontend
+                        logger.info(
+                            f"[CONSUMER] Human turn for {current_speaker.role}, "
+                            f"time remaining: {state.time_remaining_seconds}s"
+                        )
+                        await client.publish(channel, json.dumps({
+                            "event": "TURN_STARTED",
+                            "speaker": "human",
+                            "role": current_speaker.role,
+                            "side": current_speaker.side,
+                            "time_remaining": state.time_remaining_seconds
+                        }))
 
                 # EVENT: Other - Match finished or unrecognized action
                 else:

@@ -118,6 +118,12 @@ async def generate_ai_response(
         }))
         logger.info(f"[AI] Published TURN_STARTED for {speaker_role} on {channel}")
 
+        # ===== PHASE 2: CHANGE 1 - Mark as streaming =====
+        state.ai_stream_status = "STREAMING"
+        state.active_stream_buffer = ""
+        await state_manager.update_state(state)
+        logger.info(f"[AI] Marked ai_stream_status=STREAMING for {speaker_role}")
+
         response = await debater.orchestrate_debater_response(
             transcript=transcript,
             motion=motion_text,
@@ -127,11 +133,21 @@ async def generate_ai_response(
             difficulty_level=skill_level,
             personality_trait="balanced",
             session_id=match_id,
-            channel=channel
+            channel=channel,
+            state=state,
+            state_manager=state_manager
         )
 
         logger.info(
             f"[AI] Response generated ({len(response)} chars): {response[:100]}..."
+        )
+
+        # ===== PHASE 2: CHANGE 3 - Mark as complete =====
+        state.ai_stream_status = "COMPLETED"
+        await state_manager.update_state(state)
+        logger.info(
+            f"[AI] Completed speech ({len(state.active_stream_buffer)} chars) "
+            f"cached in Redis for rejoin recovery"
         )
 
         turn_data = {

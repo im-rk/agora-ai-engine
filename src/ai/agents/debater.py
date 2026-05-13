@@ -298,7 +298,9 @@ class DebaterAgent:
         temperature: float,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None,
-        channel: Optional[str] = None
+        channel: Optional[str] = None,
+        state: Optional[object] = None,
+        state_manager: Optional[object] = None
     ) -> str:
         """
         Phase 4: Generation - Stream response with callbacks.
@@ -329,7 +331,9 @@ class DebaterAgent:
         # Create streaming callback handler
         callback = RedisStreamingCallbackHandler(
             redis_client=self.redis_client,
-            channel=channel
+            channel=channel,
+            state=state,
+            state_manager=state_manager
         )
         
         # Format evidence into readable ammo (prose format, not technical notation)
@@ -369,7 +373,6 @@ class DebaterAgent:
                 "CRITICAL: Integrate this stance naturally into your arguments. DO NOT repeat these instructions verbatim, and DO NOT mechanically say 'I negate this motion' repeatedly.\n"
                 "</stance_instructions>"
             )
-        # =========================================================
         
         # Assemble final prompt with format-specific template
         system_prompt = self.response_generation_prompt.format(
@@ -438,7 +441,9 @@ class DebaterAgent:
         difficulty_level: Optional[str] = None,
         personality_trait: Optional[str] = None,
         session_id: Optional[str] = None,
-        channel: Optional[str] = None
+        channel: Optional[str] = None,
+        state: Optional[object] = None,
+        state_manager: Optional[object] = None
     ) -> str:
         """
         Main orchestrator: Execute all 4 phases sequentially.
@@ -513,7 +518,9 @@ class DebaterAgent:
             temperature=config.temperature,
             personality_trait=personality_trait,
             session_id=session_id,
-            channel=channel
+            channel=channel,
+            state=state,
+            state_manager=state_manager
         )
         
         return response
