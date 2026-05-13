@@ -32,6 +32,7 @@
 - [Architecture](#-architecture)
 - [The 4-Phase AI Debate Pipeline](#-the-4-phase-ai-debate-pipeline)
 - [The 5-Phase WUDC Adjudication Pipeline](#-the-5-phase-wudc-adjudication-pipeline)
+- [Full Generation Strategy & WebSocket Rejoin](#-full-generation-strategy--websocket-rejoin-faang-pattern)
 - [Difficulty System](#-difficulty-system)
 - [Debate Formats](#-debate-formats)
 - [Project Structure](#-project-structure)
@@ -337,6 +338,131 @@ The full structured result is written to `adjudication_results` (single JSONB ro
 
 ---
 
+## 🔄 Full Generation Strategy & WebSocket Rejoin (FAANG Pattern)
+
+### The Problem
+What happens when a user's WebSocket disconnects **while the AI is still speaking**? 
+
+- **Bad approach:** Cancel the LLM call, pause state, resume on rejoin ❌
+  - Cost: $0.002 (two LLM calls) + restart overhead + risk of context loss
+  - Logic: Complex, error-prone resume logic
+  
+- **Good approach:** Let AI **finish generating naturally**, cache full speech, send on rejoin ✅
+  - Cost: $0.001 (one LLM call) + cheap Redis storage
+  - Logic: Simple, robust, better UX
+
+### The Solution: Token Buffering + CATCH_UP_BUFFER
+
+**Timeline: User disconnects at T=3:00 while AI generates a 5-minute speech**
+
+```
+T=0:00  AI starts → ai_stream_status = "STREAMING", active_stream_buffer = ""
+T=0:30  "The economy is crucial..." → buffered + published to Redis Pub/Sub
+        ├─ User online? → tokens flow to WebSocket (live rendering) ✅
+        └─ User offline? → tokens still cache, just no WebSocket forward ✅
+
+T=3:00  USER DISCONNECTS ⚠️
+        ├─ is_user_connected = false
+        ├─ WebSocket closes (gateway stops forwarding)
+        └─ BUT: Redis Pub/Sub keeps flowing, buffer keeps growing
+
+T=3:00-5:00  OFFLINE PERIOD
+        ├─ "...crucial for growth..."
+        ├─ "...ensuring economic prosperity"
+        ├─ active_stream_buffer += each token
+        ├─ NO COST (same one LLM call, just caching)
+        └─ State persisted to Redis every token
+
+T=5:00  AI FINISHES
+        ├─ ai_stream_status = "COMPLETED"
+        └─ active_stream_buffer = full 1000+ char speech ✅
+
+T=8:00  USER RECONNECTS 🔌
+        ├─ REST call: GET /api/matches/{id}/state
+        ├─ Backend: Reads Redis, fetches active_stream_buffer
+        ├─ Publishes: CATCH_UP_BUFFER event with full speech
+        ├─ Frontend: Renders entire speech instantly
+        └─ Perfect seamless experience! ✅
+```
+
+### Implementation Details
+
+**On DISCONNECT (redis_consumer.py):**
+```python
+if action == "DISCONNECT":
+    state.is_user_connected = False
+    state.last_connected_at = now
+    
+    # If user was speaking: pause timer
+    if current_speaker.player_type == "human":
+        state.status = "PAUSED"
+    
+    # If AI was speaking: do NOTHING
+    # AI task continues naturally
+    # Tokens still accumulate in active_stream_buffer
+    # and flow to Redis cache
+    
+    await state_manager.update_state(state)
+```
+
+**On REJOIN (redis_consumer.py):**
+```python
+elif action == "REJOIN_MATCH":
+    state.is_user_connected = True
+    state.last_connected_at = now
+    
+    # Extend deadline if human was speaking
+    if current_speaker.player_type == "human" and state.status == "PAUSED":
+        state.turn_expires_at += (now - previous_disconnect_time)
+    
+    # Send full cached speech if AI was generating
+    if (current_speaker.player_type == "ai" and 
+        state.ai_stream_status in ["STREAMING", "COMPLETED"] and
+        state.active_stream_buffer):
+        
+        await client.publish(channel, json.dumps({
+            "event": "CATCH_UP_BUFFER",
+            "text": state.active_stream_buffer,
+            "is_complete": (state.ai_stream_status == "COMPLETED")
+        }))
+```
+
+**AI Token Streaming (ai_response_generator.py):**
+```python
+async def stream_callback(token: str):
+    # Accumulate token in buffer
+    state.active_stream_buffer += token
+    
+    # Persist to Redis (for rejoin recovery)
+    await state_manager.update_state(state)
+    
+    # Publish to Pub/Sub (whether user is online or not)
+    await client.publish(channel, json.dumps({
+        "event": "AI_TOKEN",
+        "token": token
+    }))
+```
+
+### Why This Works
+
+| Aspect | Pause & Resume ❌ | Full Generation ✅ |
+|--------|---|---|
+| **LLM Cost** | $0.002 (start + restart) | $0.001 (one call) |
+| **Storage** | Partial context + state | Full speech (~1KB) |
+| **Complexity** | Resume logic, error-prone | Simple caching |
+| **User Latency** | Typing resumes slowly | Instant full context |
+| **Error Rate** | High (context rebuild fails) | Low (already complete) |
+
+### Files Involved
+
+- **Data:** [`src/schemas/state_schema.py`](src/schemas/state_schema.py) — `turn_expires_at`, `is_user_connected`, `ai_stream_status`, `active_stream_buffer`
+- **State:** [`src/engine/state.py`](src/engine/state.py) — `initialize_match()` with absolute timestamps
+- **Streaming:** [`src/workers/ai_response_generator.py`](src/workers/ai_response_generator.py) — `stream_callback` to accumulate tokens
+- **Events:** [`src/workers/redis_consumer.py`](src/workers/redis_consumer.py) — `DISCONNECT` and `REJOIN_MATCH` handlers
+- **API:** [`src/api/routes/v1/{format}/matches.py`](src/api/routes/v1) — `GET /{match_id}/state` for hydration
+
+---
+
 ## 🎚️ Difficulty System
 
 Three independent levers, defined as a single Pydantic config in [`src/core/difficulty.py`](src/core/difficulty.py):
@@ -623,6 +749,8 @@ The consumer uses `psubscribe("debate:*")` to fan in events from all live matche
 |-------|--------|--------|
 | `START_MATCH` | Frontend (via Gateway) | Init `LiveMatchState` · determine first speaker · spawn first task |
 | `TURN_CHANGED` | Gateway | Persist previous turn (human or AI) · advance schedule · spawn next AI or notify frontend |
+| `DISCONNECT` | Gateway | Mark user offline · pause timer if human speaking · **let AI continue generating** (caches full speech) |
+| `REJOIN_MATCH` | Gateway | Resume session · extend deadline if paused · send **full cached speech** (CATCH_UP_BUFFER) if AI was offline |
 | `MATCH_COMPLETE` | Internal | Mark `status=finished` · `asyncio.create_task(run_adjudication_worker(...))` |
 
 ### Outbound (published)
@@ -630,6 +758,7 @@ The consumer uses `psubscribe("debate:*")` to fan in events from all live matche
 |-------|---------|
 | `TURN_STARTED` | `{ event, speaker, role, side, turn_index }` |
 | `AI_TOKEN` | `{ event, text }` (one per LLM token) |
+| `CATCH_UP_BUFFER` | `{ event, text, is_complete, speaker_role }` (full cached speech on rejoin) |
 | `AI_THOUGHT_COMPLETE` | `{ event }` |
 | `MATCH_COMPLETE` | `{ event, match_id, message }` |
 | `ADJUDICATION_STARTED` | `{ event }` |
@@ -643,8 +772,15 @@ Key: `match_state:{matchId}` · TTL: 7200 s
 {
   "match_id": "...",
   "format_type": "ap",
-  "status": "in_progress",
+  "status": "IN_PROGRESS",
   "current_turn_index": 3,
+  
+  "turn_expires_at": 1735689300,
+  "is_user_connected": true,
+  "last_connected_at": 1735689230,
+  "ai_stream_status": "IDLE",
+  "active_stream_buffer": "",
+  
   "schedule": [
     { "role": "prime_minister",       "side": "government", "player_type": "ai"    },
     { "role": "leader_of_opposition", "side": "opposition", "player_type": "human" },
@@ -653,6 +789,23 @@ Key: `match_state:{matchId}` · TTL: 7200 s
   "transcript": [ {...}, {...} ]
 }
 ```
+
+**Key fields for rejoin logic:**
+- **`turn_expires_at`** (Unix timestamp) — Absolute deadline for current turn. Calculated as `@property`: `time_remaining_seconds = max(0, turn_expires_at - now())`. Updated on rejoin if user was paused.
+- **`is_user_connected`** — `true` if WebSocket active, `false` after disconnect. Determines if user sees live AI_TOKEN events.
+- **`last_connected_at`** (Unix timestamp) — Used to calculate offline duration and extend turn deadline on rejoin.
+- **`ai_stream_status`** — `"IDLE"` (waiting) | `"STREAMING"` (generating) | `"COMPLETED"` (done). Controls buffering and send-on-rejoin behavior.
+- **`active_stream_buffer`** — Accumulates all tokens from current AI speech. On user disconnect, AI keeps generating and adding to buffer. On rejoin, full buffer sent via CATCH_UP_BUFFER event.
+
+**The Rejoin Strategy (Full Generation):**
+1. **AI starts speaking** → `ai_stream_status = "STREAMING"`, `active_stream_buffer = ""`
+2. **Each token arrives** → appended to `active_stream_buffer` and published to Redis Pub/Sub
+3. **User online?** → Tokens forward to WebSocket (live rendering ✅)
+4. **User offline?** → Tokens don't forward to WebSocket, but still cache in buffer (no waste ✅)
+5. **AI finishes speech** → `ai_stream_status = "COMPLETED"`, buffer contains full speech
+6. **User reconnects** → REST call fetches `active_stream_buffer`, sends via CATCH_UP_BUFFER (instant full context ✅)
+
+> This avoids the complexity and cost of "pause LLM + resume from context" — let one cheap call finish, cache it, send it.
 
 > The Gateway is the only writer to `current_turn_index`. The engine **reads** state but never increments the turn counter — single source of truth.
 

@@ -274,9 +274,9 @@ async def start_redis_consumer():
                     if state.current_turn_index >= len(state.schedule):
                         logger.info(
                             f"[CONSUMER] All turns complete for match {match_id}. "
-                            f"Marking finished..."
+                            f"Marking completed..."
                         )
-                        state.status = "finished"
+                        state.status = "COMPLETED"  # Updated to match new Literal enum
                         await state_manager.update_state(state)
                         
                         # Publish to frontend that debate is complete

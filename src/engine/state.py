@@ -2,7 +2,8 @@ import os
 import json
 import redis.asyncio as redis
 from typing import Optional
-from src.schemas.state_schema import Turn,LiveMatchState
+from datetime import datetime, timezone
+from src.schemas.state_schema import Turn, LiveMatchState
 from src.core.config import settings
 
 class MatchStateManager:
@@ -77,12 +78,22 @@ class MatchStateManager:
         """Creates a initial game state and save it to Redis."""
         await self._ensure_connection()
         full_schedule = self._generate_schedule(format_type, human_side, preferred_role)
+        
+        # Set absolute timestamp for turn expiration (CRITICAL for rejoin)
+        now = int(datetime.now(timezone.utc).timestamp())
+        turn_duration = 300  # 5 minutes per turn
+        
         state = LiveMatchState(
             match_id=match_id,
             format_type=format_type,
-            status="in_progress",
+            status="IN_PROGRESS",  # Uppercase to match Literal enum
             current_turn_index=0,
-            schedule=full_schedule
+            schedule=full_schedule,
+            turn_expires_at=now + turn_duration,  # Unix timestamp (absolute, not relative)
+            is_user_connected=True,  # User starts connected
+            last_connected_at=now,  # Track when connection established
+            ai_stream_status="IDLE",  # No AI generating yet
+            active_stream_buffer="",  # No buffer yet
         )
 
         await self.update_state(state)
