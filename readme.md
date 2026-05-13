@@ -1,184 +1,383 @@
+<div align="center">
+
+<img src="assets/Adjucation1.png" alt="Agora Adjudication — powered by this engine" width="100%" />
+
 # Agora AI Engine
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/fastapi-0.95+-green.svg)](https://fastapi.tiangolo.com/)
-[![PostgreSQL](https://img.shields.io/badge/postgres-14+-blue.svg)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/redis-7+-red.svg)](https://redis.io/)
+### *The Brain of the Arena*
 
-A production-grade AI debate orchestration engine that powers real-time competitive debate simulations. The system intelligently generates AI speeches, manages debate state, measures performance metrics, and provides adjudication feedback through a modular, format-aware architecture.
+**A production-grade FastAPI engine that orchestrates a 4-Phase RAG-driven debater and a 5-Phase WUDC adjudicator — async-first, format-aware, difficulty-throttled, streaming-native.**
 
-## 🎯 Mission
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.135+-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00)](https://www.sqlalchemy.org/)
+[![PostgreSQL](https://img.shields.io/badge/Postgres-14+-4169E1?logo=postgresql)](https://www.postgresql.org/)
+[![pgvector](https://img.shields.io/badge/pgvector-1024D-purple)](https://github.com/pgvector/pgvector)
+[![Redis](https://img.shields.io/badge/Redis-7+-DC382D?logo=redis)](https://redis.io/)
+[![Groq](https://img.shields.io/badge/Groq-LLaMA--3.1-F55036)](https://groq.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-1.2-22C55E)](https://www.langchain.com/)
+[![License](https://img.shields.io/badge/License-Proprietary-blue)]()
 
-Enable users to practice debate against AI opponents that adapt to their skill level, providing real-time feedback and comprehensive performance analysis across multiple debate formats.
+[Architecture](#-architecture) · [4-Phase Debater](#-the-4-phase-ai-debate-pipeline) · [5-Phase Adjudicator](#-the-5-phase-wudc-adjudication-pipeline) · [Build Guide](#-getting-started)
 
----
-
-## 📋 Table of Contents
-
-- [Architecture Overview](#architecture-overview)
-- [Key Features](#key-features)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Core Workflows](#core-workflows)
-- [Debate Formats](#debate-formats)
-- [Difficulty System](#difficulty-system)
-- [API Reference](#api-reference)
-- [Development](#development)
-- [Deployment](#deployment)
-- [Contributing](#contributing)
-- [Troubleshooting](#troubleshooting)
+</div>
 
 ---
 
-## 🏗️ Architecture Overview
+## 📖 Table of Contents
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Frontend (React)                         │
-│              (Audio I/O, Speech Playback Control)              │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ WebSocket
-                           ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                   Gateway (Go) + gRPC                           │
-│         (State Management, Event Coordination)                 │
-└──────────────┬──────────────────────────┬──────────────────────┘
-               │ Redis Pub/Sub                │ HTTP/REST
-               ↓                              ↓
-        ┌──────────────────┐      ┌────────────────────┐
-        │ Python AI Engine │      │ PostgreSQL + Alembic
-        │  (This Repo)     │      │   (Persistence)    │
-        └──────────────────┘      └────────────────────┘
-               │
-        ┌──────┴──────────────────┐
-        │                         │
-        ↓                         ↓
-   ┌─────────────┐         ┌─────────────┐
-   │ Debater     │         │ Adjudicator │
-   │ Agent (4x)  │         │ Agent       │
-   └─────────────┘         └─────────────┘
-        │                        │
-        ↓                        ↓
-   ┌─────────────────────────────────────┐
-   │   External LLM Services             │
-   │  ├─ Groq (Primary)                  │
-   │  ├─ Cohere (RAG)                    │
-   │  └─ ElevenLabs (TTS)                │
-   └─────────────────────────────────────┘
-```
-
-### Data Flow
-
-**Live Debate Turn:**
-1. **START_MATCH** → Determine first speaker
-2. **AI Turn** → 4-phase generation pipeline
-   - State parsing → Query synthesis → Evidence retrieval → Response generation
-3. **TURN_CHANGED** (via WebSocket + timing data) → Persist turn + measure duration
-4. **TURN_CHANGED** → Check if next speaker is AI or Human
-5. **Repeat** until all speakers complete
-6. **Match completion** → Trigger adjudication
-7. **ADJUDICATION** → Grade all speakers, persist results
+- [What is the AI Engine?](#-what-is-the-ai-engine)
+- [Why This Service Exists](#-why-this-service-exists)
+- [Visual Context](#-visual-context)
+- [Architecture](#-architecture)
+- [The 4-Phase AI Debate Pipeline](#-the-4-phase-ai-debate-pipeline)
+- [The 5-Phase WUDC Adjudication Pipeline](#-the-5-phase-wudc-adjudication-pipeline)
+- [Difficulty System](#-difficulty-system)
+- [Debate Formats](#-debate-formats)
+- [Project Structure](#-project-structure)
+- [Database Schema](#-database-schema)
+- [RAG & Vector Search](#-rag--vector-search)
+- [Redis Event Contract](#-redis-event-contract)
+- [REST API](#-rest-api)
+- [Tech Stack](#-tech-stack)
+- [Getting Started](#-getting-started)
+- [Environment Variables](#-environment-variables)
+- [Development](#-development)
+- [Deployment](#-deployment)
+- [Observability](#-observability)
+- [Troubleshooting](#-troubleshooting)
+- [Industry Patterns Used](#-industry-patterns-used)
 
 ---
 
-## ✨ Key Features
+## 🧠 What is the AI Engine?
 
-### 1. **Format-Aware Debate Orchestration**
-- **Asian Parliamentary (AP)**: 6 speakers (3 per side), 7-minute speeches
-- **British Parliamentary (BP)**: 8 speakers (4 per side), 8-minute speeches
-- Dynamic speaker scheduling and role constraints
-- Format-specific prompt injection and evidence filters
+**Agora AI Engine** is the **intelligence layer** of the Agora real-time debate platform. It owns the rules, the schedule, the prompts, the retrieval, the streaming, and the final WUDC verdict — every cognitive step that turns a motion and a microphone into a graded competitive debate.
 
-### 2. **4-Phase AI Debate Pipeline**
-```
-Phase 1: State Tracking
-├─ Parse debate transcript
-├─ Identify clash matrix (points of disagreement)
-└─ Determine strategic priorities
+It is **headless to the user**: it never serves WebSockets, never plays audio, and never knows what the browser looks like. It listens to Redis events, runs LLM pipelines, persists to Postgres, and republishes streamed tokens for the gateway to deliver.
 
-Phase 2: Query Synthesis
-├─ Generate targeted search queries (difficulty-throttled)
-├─ Leverage clash matrix for relevance
-└─ Limit query count by skill level (1/2/4 queries)
+> **Where this repo sits**
+> ```
+>  Next.js Frontend  ⇄  Go Gateway  ⇄  [ THIS REPO ─ Python AI Engine ]
+>     (Voice + UI)        (STT/TTS · Redis)    (4-Phase RAG · 5-Phase Adjudication)
+> ```
 
-Phase 3: Evidence Retrieval & Ranking
-├─ Semantic search on case-prep embeddings
-├─ Re-rank by match context
-└─ Return top-k results (1/3/5 by difficulty)
+It pairs with two sibling services:
 
-Phase 4: Response Generation
-├─ Stream LLM output via Redis callbacks
-├─ Inject personality/difficulty modifiers
-├─ Enforce role-specific constraints
-└─ Persist to database
-```
-
-### 3. **Skill-Based Difficulty System**
-Three independent levers for seamless difficulty scaling:
-
-| Difficulty | Info Throttle | Memory Drop | Persona |
-|-----------|---------------|------------|---------|
-| **Beginner** | 1 query, top 1 result | 50% argument drop | 0.8 temp, novice tone |
-| **Intermediate** | 2 queries, top 3 results | 10% argument drop | 0.4 temp, balanced tone |
-| **Advanced** | 4 queries, top 5 results | 0% argument drop | 0.1 temp, expert tone |
-
-**Implementation**: [src/core/difficulty.py](src/core/difficulty.py)
-
-### 4. **Vector DB-Based RAG**
-- **Storage**: PostgreSQL with pgvector extension
-- **Content**: Case prep embeddings only (motion-specific arguments + counter-arguments + evidence)
-- **Query**: Match-side-role-aware semantic search
-- **Metadata**: match_id, user_id, side, role, motion_category
-
-### 5. **Real-Time Event Streaming**
-- Redis Pub/Sub for low-latency event coordination
-- Event patterns: START_MATCH, TURN_CHANGED, MATCH_COMPLETE
-- WebSocket bridge to frontend for bi-directional communication
-- Async task orchestration via Python asyncio
-
-### 6. **Accurate Speech Timing Measurement**
-- Frontend captures exact audio playback duration (onplay → onended)
-- Gateway forwards timing data in TURN_CHANGED event
-- Python consumer persists to database
-- Metrics: started_at, ended_at, duration_seconds
-- **No Redis pollution**: Data travels in event payload
-
-### 7. **Adjudication & Performance Grading**
-- Evaluates all speakers on argumentation quality
-- Generates detailed feedback for each role
-- Scores speakers 1-10 with reasoning
-- Async worker prevents debate blocking
-- Results persisted for analytics
-
-### 8. **Comprehensive Observability**
-- Structured logging (LLMCallLog for all AI interactions)
-- Redis state snapshots for debugging
-- Turn-by-turn transcript persistence
-- Performance metrics per speaker
+| Repo | Role | Stack |
+|------|------|-------|
+| `agora-frontend` | Live Arena UI · Web Audio queue · MediaRecorder | Next.js 16 · Zustand · Framer Motion |
+| `agora-gateway` | High-throughput WebSocket broker · STT/TTS · reverse proxy | Go · Gorilla · Redis Pub/Sub · Deepgram |
 
 ---
 
-## 🛠️ Tech Stack
+## 🤔 Why This Service Exists
 
-### Backend
-- **Framework**: FastAPI 0.95+ (async-first)
-- **Language**: Python 3.10+
-- **Database**: PostgreSQL 14+ with pgvector
-- **Message Queue**: Redis 7+ (Pub/Sub)
-- **Async Runtime**: asyncio + aioredis
-- **ORM**: SQLAlchemy 2.0
+Real competitive debating cannot be modeled as a chat completion. A motion like *"This house believes a global wealth tax is just"* requires:
 
-### LLM Services
-- **Generation**: Groq (fast inference, streaming)
-- **Embeddings**: Cohere (semantic search)
-- **TTS**: ElevenLabs (natural speech synthesis)
+- **Side-aware reasoning** — Government must affirm; Opposition must negate.
+- **Role-specific responsibilities** — the Whip *weighs* clashes, the PM *frames* the debate, the Member *introduces new analysis*.
+- **Evidence retrieval** — arguments need warrants, not vibes.
+- **Adversarial structure** — every speech rebuts what came before.
+- **Tournament-grade adjudication** — winner determined by macro-clash analysis, not single-line "X wins" calls.
 
-### Deployment
-- **Container**: Docker + Docker Compose
-- **Orchestration**: Kubernetes (optional)
-- **Database Migrations**: Alembic
-- **Monitoring**: Structured logging (stdout-to-ELK)
+The AI engine encodes all of that. It is the only place in the platform that owns the debate's **logical correctness, format conformance, and judging integrity**.
+
+---
+
+## 🖼️ Visual Context
+
+Every screenshot below is the *visible result* of pipelines that live in this repository:
+
+<table>
+  <tr>
+    <td width="50%" align="center"><b>Setup → AI Picks Side</b><br/><img src="assets/SetupDebate1.png" alt="Setup Debate" /></td>
+    <td width="50%" align="center"><b>Case Prep — generated by <code>prep_coach</code></b><br/><img src="assets/CasePrep1.png" alt="Case Prep" /></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><b>Live Streaming Token Output</b><br/><img src="assets/DebateArena2.png" alt="AI Speaking" /></td>
+    <td width="50%" align="center"><b>5-Phase Adjudication (this repo's output)</b><br/><img src="assets/Adjucation1.png" alt="Adjudication" /></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><b>Verdict & Score Banner</b><br/><img src="assets/Results1.png" alt="Verdict" /></td>
+    <td width="50%" align="center"><b>WCM + WUDC Pillar Breakdown</b><br/><img src="assets/Results2.png" alt="WCM Pillars" /></td>
+  </tr>
+  <tr>
+    <td width="100%" align="center" colspan="2"><b>Speaker-level grading with verbatim quotes & coach feedback</b><br/><img src="assets/Results3.png" alt="Speaker Scores" /></td>
+  </tr>
+</table>
+
+---
+
+## 🏗️ Architecture
+
+### Topology
+
+```mermaid
+graph TD
+    subgraph Edge["🌐 Edge"]
+        FE[Next.js Frontend]
+        GW[Go Gateway · :8080]
+        FE <-->|WSS| GW
+    end
+
+    subgraph Engine["🧠 Python AI Engine · :8000 (THIS REPO)"]
+        FAPI[FastAPI · main.py]
+        CONS[workers/redis_consumer.py<br/>Pub/Sub Event Loop]
+        AIRG[workers/ai_response_generator.py]
+        ADJW[workers/adjudication_worker.py]
+        DEB[ai/agents/debater.py<br/>4-Phase Pipeline]
+        ADJ[ai/agents/adjudicator.py<br/>5-Phase Pipeline]
+        PREP[ai/agents/prep_coach.py]
+        RAG[ai/tools/rag_engine.py]
+        STATE[engine/state.py<br/>MatchStateManager]
+
+        FAPI --> CONS
+        CONS --> AIRG
+        CONS --> ADJW
+        AIRG --> DEB
+        ADJW --> ADJ
+        DEB --> RAG
+        DEB --> STATE
+        ADJ --> STATE
+    end
+
+    subgraph DataPlane["📡 Data Plane"]
+        REDIS[(Redis<br/>Pub/Sub + LiveMatchState)]
+        DB[(PostgreSQL<br/>+ pgvector 1024D)]
+    end
+
+    subgraph LLMs["🔌 LLM Services"]
+        GROQ[Groq · llama-3.1-8b-instant]
+        OAI[OpenAI · gpt-4o-mini fallback]
+        COH[Cohere · embed-english-v3.0]
+        SB[(Supabase Auth)]
+        LF[Langfuse · observability]
+    end
+
+    GW <-->|Pub/Sub| REDIS
+    CONS <-->|Pub/Sub| REDIS
+    STATE <-->|GET/SET| REDIS
+    AIRG --> DB
+    ADJW --> DB
+    RAG -->|cosine search| DB
+    DEB --> GROQ
+    PREP --> OAI
+    RAG --> COH
+    ADJ --> GROQ
+    FAPI --> SB
+    DEB -.->|trace| LF
+    ADJ -.->|trace| LF
+
+    style Engine fill:#0c4a6e,stroke:#06b6d4,color:#fff
+    style DataPlane fill:#581c87,stroke:#a855f7,color:#fff
+    style LLMs fill:#7c2d12,stroke:#f97316,color:#fff
+```
+
+### Two Concurrent Surface Areas
+
+The engine runs **two surfaces** inside one process:
+
+1. **REST API (FastAPI)** — synchronous endpoints for match creation, case prep, history, adjudication retrieval. Mounted on `:8000`.
+2. **Redis Consumer Worker** — async background task spawned from FastAPI's `lifespan`, listening on `psubscribe("debate:*")`. This is where real-time orchestration happens.
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    consumer_task = asyncio.create_task(start_redis_consumer())
+    yield
+    consumer_task.cancel()
+```
+
+---
+
+## 🧪 The 4-Phase AI Debate Pipeline
+
+Located in [`src/ai/agents/debater.py`](src/ai/agents/debater.py). Every AI speech runs the four phases below — **format-aware** (AP vs BP) and **difficulty-throttled** (Beginner / Intermediate / Advanced).
+
+```mermaid
+graph LR
+    Trigger[TURN_CHANGED · AI is next] --> P1
+    P1[🔍 Phase 1<br/>State Tracker<br/>Parse Clash Matrix] --> P2
+    P2[🎯 Phase 2<br/>Sniper<br/>Synthesize Search Queries] --> P3
+    P3[📚 Phase 3<br/>Researcher<br/>Retrieve & Re-rank Evidence] --> P4
+    P4[🎤 Phase 4<br/>Debater<br/>Stream Spoken Speech] --> Out[AI_TOKEN events<br/>→ Redis → Frontend]
+
+    style P1 fill:#1e3a8a,stroke:#3b82f6,color:#fff
+    style P2 fill:#7c2d12,stroke:#f97316,color:#fff
+    style P3 fill:#14532d,stroke:#22c55e,color:#fff
+    style P4 fill:#581c87,stroke:#a855f7,color:#fff
+```
+
+### Phase 1 — State Tracker · *"What just happened?"*
+**Function:** `phase1_parse_clash_matrix()`
+**Model:** `llama-3.1-8b-instant` · `temp=0.1` · JSON mode
+
+Parses the entire transcript so far into a structured **clash matrix**:
+```json
+{
+  "opponent_claims": [...],   // arguments the AI must rebut
+  "our_dropped_args": [...],  // own arguments the AI failed to extend
+  "vulnerabilities": [...]    // weak spots in opposing case
+}
+```
+
+### Phase 2 — Query Synthesis · *"What should I research?"*
+**Function:** `phase2_generate_search_queries()`
+**Model:** `llama-3.1-8b-instant` · `temp=0.3`
+
+Turns the clash matrix into **role-specific search queries**:
+- A *Whip* generates queries about clash weighting.
+- A *Prime Minister* generates queries about framing.
+- A *Member* generates queries about new analytical angles.
+
+> 🎚️ Throttled by difficulty: Beginner = **1 query**, Intermediate = **2**, Advanced = **4**.
+
+### Phase 3 — Retrieval & Re-rank · *"What evidence backs me?"*
+**Function:** `phase3_retrieve_and_rerank()`
+**Engine:** [`src/ai/tools/rag_engine.py`](src/ai/tools/rag_engine.py)
+
+For each query, performs **async semantic search** over `argument_embeddings` filtered by `match_id` + `side` (and optionally `role`). Uses pgvector cosine similarity.
+
+> 🎚️ Throttled by difficulty: Beginner = **top 1**, Intermediate = **top 3**, Advanced = **top 5**.
+
+> 🧠 Memory drop: Beginner forgets **50%** of opponent claims; Advanced forgets **0%**.
+
+### Phase 4 — Streaming Generation · *"Speak!"*
+**Function:** `phase4_generate_response_streaming()`
+**Model:** `llama-3.1-8b-instant` · `streaming=True` · `temp ∈ {0.1, 0.4, 0.8}`
+
+Composes the final speech with:
+- The clash matrix from Phase 1
+- The retrieved evidence from Phase 3
+- A **forced stance** instruction (Government affirms ⇄ Opposition negates)
+- A **persona modifier** (`"You are a novice debater..."` vs `"You are a WUDC champion..."`)
+- **Format-specific role constraints** (PM frames, Whip weighs, Member introduces)
+
+Tokens stream through `RedisStreamingCallbackHandler` → published per token to Redis → forwarded by the Go Gateway → typed onto the frontend in real-time.
+
+```python
+class RedisStreamingCallbackHandler(AsyncCallbackHandler):
+    async def on_llm_new_token(self, token: str, **kwargs):
+        await self.redis.publish(
+            f"debate:{self.match_id}:turns",
+            json.dumps({"event": "AI_TOKEN", "text": token})
+        )
+```
+
+### Post-Processing
+- The full text is persisted to `turns` table.
+- An `AICallLog` row records every Phase's prompt, model, temperature, and raw output (tracing).
+- `AI_THOUGHT_COMPLETE` is published to signal the gateway to flush remaining TTS audio.
+
+---
+
+## 🧑‍⚖️ The 5-Phase WUDC Adjudication Pipeline
+
+Located in [`src/ai/agents/adjudicator.py`](src/ai/agents/adjudicator.py). Triggered by the `MATCH_COMPLETE` event from the consumer. Mirrors the methodology used by **Chief Adjudicators at the World Universities Debating Championship**.
+
+```mermaid
+graph TD
+    Trigger[MATCH_COMPLETE] --> P1
+    P1[🥊 Phase 1<br/>Extract Macro Clashes<br/>3-5 themes] --> P2
+    P2[⚖️ Phase 2<br/>Build Weighted Clash Matrix<br/>Weight × Delta] --> P3
+    P3[🏛️ Phase 3<br/>WUDC Pillar Analysis<br/>Matter · Manner · Method · Role] --> P4
+    P4[🎤 Phase 4<br/>Grade Each Speaker<br/>5 sub-scores · /100] --> P5
+    P5[📜 Phase 5<br/>Final Summary<br/>+ 3 Key Decisions] --> Save[(adjudication_results)]
+    Save --> Pub[ADJUDICATION_COMPLETE event]
+
+    style P1 fill:#831843,stroke:#ec4899,color:#fff
+    style P2 fill:#1e3a8a,stroke:#3b82f6,color:#fff
+    style P3 fill:#7c2d12,stroke:#f97316,color:#fff
+    style P4 fill:#14532d,stroke:#22c55e,color:#fff
+    style P5 fill:#581c87,stroke:#a855f7,color:#fff
+```
+
+### Phase 1 — Macro-Clash Extraction
+Identifies **3–5 high-level themes** that structured the debate (e.g., *"The Economic Impact Clash"*, *"The Logistical Feasibility Clash"*, *"The Fairness & Equity Clash"*). Themes — not individual arguments.
+
+### Phase 2 — Weighted Clash Matrix (WCM)
+For each clash, the LLM assigns:
+- **Weight** ∈ [1, 5] — importance to the debate's outcome
+- **Delta** ∈ [-2, +2] — winner of the clash (negative = Opposition won, positive = Government won)
+- **Weighted Score** = Weight × Delta
+
+The **Net Logic Score** is `sum(weighted_scores)`. This is the mathematical backbone of the verdict.
+
+> 🛡️ **Hallucination guard** — `_recalculate_totals()` re-derives net score from components. The LLM's arithmetic is **never** trusted.
+
+### Phase 3 — WUDC Pillar Breakdown
+Grades each team out of **100**, split into 4 pillars of **25 points each**:
+
+| Pillar | Measures |
+|--------|----------|
+| **Matter** | Logic, evidence, analytical depth (anchored to WCM math) |
+| **Manner** | Persuasiveness, delivery, rhetoric |
+| **Method** | Case structure, organization, signposting |
+| **Role** | Fulfillment of speaker-specific WUDC duties |
+
+### Phase 4 — Per-Speaker Grading
+Every speaker gets 5 sub-scores (each /10), totaled × 2:
+
+| Sub-score | What it measures |
+|-----------|------------------|
+| Argument | Strength of original analysis |
+| Evidence | Use of warrants and examples |
+| Responsiveness | Rebuttal quality |
+| Structure | Internal organization of the speech |
+| Persona | Stage presence, confidence |
+
+Each grade includes a **mandatory verbatim quote** pulled from the speaker's transcript. The PM's responsiveness gets a baseline 8–10 (cannot rebut what hasn't been said).
+
+### Phase 5 — Final Summary
+A 150–200 word **Chief Adjudicator's statement** + 3 itemized key decisions. The **winning team is determined strictly by average speaker score** — no subjective tiebreaks.
+
+### Persistence
+The full structured result is written to `adjudication_results` (single JSONB row per match), and `ADJUDICATION_COMPLETE` is published on Redis for the frontend's auto-redirect.
+
+---
+
+## 🎚️ Difficulty System
+
+Three independent levers, defined as a single Pydantic config in [`src/core/difficulty.py`](src/core/difficulty.py):
+
+| Lever | Beginner | Intermediate | Advanced |
+|-------|----------|--------------|----------|
+| **Info Throttle** (queries · top-k) | 1 query · top 1 | 2 queries · top 3 | 4 queries · top 5 |
+| **Memory Drop** (forgets opponent claims) | 50 % | 10 % | 0 % |
+| **Persona Modifier** (LLM temp + style) | `temp=0.8` · novice | `temp=0.4` · solid | `temp=0.1` · WUDC champion |
+
+Applied uniformly:
+- **Phase 2** uses `config.max_search_queries` to bound query count
+- **Phase 3** uses `config.rag_top_k` to bound evidence
+- **Phase 3** uses `config.argument_drop_probability` for memory drop
+- **Phase 4** injects `config.temperature` and `config.persona_modifier` into the system prompt
+
+---
+
+## 🗣️ Debate Formats
+
+### Asian Parliamentary (AP) — 6 Speakers
+```
+1. Prime Minister              (Government)
+2. Leader of Opposition        (Opposition)
+3. Deputy Prime Minister       (Government)
+4. Deputy Leader of Opposition (Opposition)
+5. Government Whip             (Government)
+6. Opposition Whip             (Opposition)
+```
+~7-minute speeches. Prompts in [`src/ai/prompts/ap/`](src/ai/prompts/ap).
+
+### British Parliamentary (BP) — 8 Speakers · 4 Teams
+```
+Opening Government:    1. PM     · 3. Deputy PM
+Opening Opposition:    2. LO     · 4. Deputy LO
+Closing Government:    5. Member · 7. Whip
+Closing Opposition:    6. Member · 8. Whip
+```
+~8-minute speeches. Prompts in [`src/ai/prompts/bp/`](src/ai/prompts/bp).
+
+Schedules are built by `engine/state.MatchStateManager._generate_schedule()`. The frontend's role enum, the gateway's voice mapping, and this engine's role normalizers all line up via shared schemas.
 
 ---
 
@@ -186,568 +385,631 @@ Three independent levers for seamless difficulty scaling:
 
 ```
 agora-ai-engine/
+├── assets/                          # README screenshots
+├── alembic/
+│   ├── versions/                    # Alembic migrations
+│   └── env.py
+├── alembic.ini
+│
 ├── src/
-│   ├── ai/                          # AI orchestration
+│   ├── ai/
 │   │   ├── agents/
-│   │   │   ├── debater.py          # 4-phase debate orchestrator
-│   │   │   ├── adjudicator.py      # Grading & feedback
-│   │   │   ├── prep_coach.py       # Case prep assistant
-│   │   │   └── sniper.py           # Cross-ex strategist
+│   │   │   ├── debater.py           # ⭐ 4-Phase pipeline
+│   │   │   ├── adjudicator.py       # ⭐ 5-Phase WUDC pipeline
+│   │   │   ├── prep_coach.py        # Case-prep generator
+│   │   │   └── sniper.py            # Cross-ex strategist
 │   │   ├── clients/
-│   │   │   ├── groq_client.py      # LLM inference
-│   │   │   ├── cohere_client.py    # Embeddings
-│   │   │   └── openai_client.py    # Fallback LLM
+│   │   │   ├── groq_client.py       # Cached singleton ChatGroq
+│   │   │   ├── openai_client.py     # gpt-4o-mini fallback
+│   │   │   └── cohere_client.py     # embeddings
 │   │   ├── callbacks/
-│   │   │   └── redis_stream.py     # LLM → Redis events
-│   │   └── prompts/
-│   │       ├── debater_prompts.py  # Debate generation
-│   │       ├── adjudicator_prompts.py
-│   │       └── [role-specific].py
+│   │   │   └── redis_stream.py      # AsyncCallbackHandler → Redis
+│   │   ├── prompts/
+│   │   │   ├── adjudicator_prompts.py
+│   │   │   ├── prep_coach_prompts.py
+│   │   │   ├── ap/debater_prompts.py
+│   │   │   └── bp/debater_prompts.py
+│   │   └── tools/
+│   │       └── rag_engine.py        # pgvector semantic search
 │   │
-│   ├── api/                        # REST endpoints
-│   │   ├── rest/
-│   │   │   ├── matches.py          # Match CRUD
-│   │   │   ├── history.py          # Retrieval
-│   │   │   └── users.py            # User management
-│   │   └── dependencies.py         # DI + auth
+│   ├── api/
+│   │   ├── routes/v1/
+│   │   │   ├── auth.py              # Supabase JWT verify
+│   │   │   ├── motions.py
+│   │   │   ├── users.py
+│   │   │   ├── ap/                  # AP match · case-prep · adjudication
+│   │   │   └── bp/                  # BP equivalents
+│   │   └── dependencies.py          # get_current_user · get_db
 │   │
 │   ├── core/
-│   │   ├── config.py               # Environment config
-│   │   ├── database.py             # DB connection
-│   │   ├── difficulty.py           # Difficulty matrix
-│   │   ├── redis_client.py         # Redis helper
-│   │   └── security.py             # Auth/JWT
+│   │   ├── config.py                # Pydantic Settings
+│   │   ├── database.py              # SQLAlchemy engine + SessionLocal
+│   │   ├── redis_client.py          # async redis singleton
+│   │   ├── difficulty.py            # ⭐ 3-lever matrix
+│   │   ├── security.py              # JWT verify
+│   │   └── logging.py
 │   │
 │   ├── engine/
-│   │   ├── state.py                # Live match state
-│   │   └── rules.py                # Format constraints
+│   │   ├── state.py                 # ⭐ MatchStateManager (Redis schedule)
+│   │   └── rules.py                 # format-specific constraints
 │   │
 │   ├── models/
-│   │   ├── debate.py               # DebateSession, Turn
-│   │   ├── user.py                 # User, SkillLevel
-│   │   ├── results.py              # Grading results
-│   │   └── setup.py                # Motion, CasePrep
+│   │   ├── user.py                  # User · SkillLevel
+│   │   ├── debate.py                # DebateSession · Turn · POI
+│   │   ├── results.py               # AdjudicationResult · UserPerformance
+│   │   └── setup.py                 # Motion · CasePrep · ArgumentEmbedding · AICallLog
 │   │
 │   ├── repositories/
-│   │   ├── ap/matches.py           # AP-specific persistence
-│   │   ├── bp/matches.py           # BP-specific persistence
-│   │   ├── debate_repo.py          # Shared queries
-│   │   ├── results_repo.py         # Grading DB ops
-│   │   └── user_repo.py            # User DB ops
+│   │   ├── ap/matches.py            # AP-specific persistence
+│   │   ├── bp/matches.py            # BP equivalents
+│   │   └── adjudication_repo.py
 │   │
 │   ├── schemas/
-│   │   ├── debate_schema.py        # Pydantic models
-│   │   ├── results_schema.py
-│   │   └── user_schema.py
+│   │   ├── state_schema.py          # LiveMatchState · Turn (Pydantic)
+│   │   ├── adjudication.py          # MacroClash · WCMEntry · PillarScore · SpeakerScore
+│   │   └── ap|bp/matches.py         # request/response models
 │   │
 │   ├── services/
-│   │   ├── llm_service.py          # LLM orchestration
-│   │   ├── embedding_service.py    # Vector search
-│   │   ├── match_service.py        # Match lifecycle
-│   │   ├── grading_service.py      # Score calculation
-│   │   └── user_service.py         # User logic
+│   │   ├── ap/matches.py            # AP business logic
+│   │   ├── bp/matches.py            # BP business logic
+│   │   └── embedding_service.py     # Cohere embed wrapper
 │   │
 │   └── workers/
-│       ├── redis_consumer.py       # Event listener
-│       ├── ai_response_generator.py# Speech generation
-│       ├── transcript_handler.py   # Transcript parsing
-│       └── adjudication_worker.py  # Grading async task
-│
-├── alembic/
-│   ├── versions/                   # DB migrations
-│   ├── env.py
-│   └── script.py.mako
+│       ├── redis_consumer.py        # ⭐ psubscribe("debate:*") event loop
+│       ├── ai_response_generator.py # 4-phase orchestration + persistence
+│       ├── transcript_handler.py    # transcript formatting helpers
+│       └── adjudication_worker.py   # 5-phase orchestration + persistence
 │
 ├── tests/
-│   ├── unit/                       # Agent/service tests
-│   ├── integration/                # API/repo tests
+│   ├── unit/
+│   ├── integration/
 │   └── conftest.py
 │
-├── main.py                         # Application entry
-├── pyproject.toml                  # Dependencies
-├── docker-compose.yml              # Local dev environment
-└── README.md                        # This file
+├── main.py                          # 🚪 FastAPI + lifespan(consumer)
+├── pyproject.toml
+├── requirements.txt
+├── uv.lock
+├── .env.example
+└── readme.md                        # this file
 ```
+
+---
+
+## 🗄️ Database Schema
+
+PostgreSQL with the **pgvector** extension. Managed via Alembic.
+
+```mermaid
+erDiagram
+    USERS ||--o{ DEBATE_SESSIONS : "creates"
+    USERS ||--o{ CASE_PREPS : "owns"
+    USERS ||--o{ USER_PERFORMANCE : "earns"
+    MOTIONS ||--o{ DEBATE_SESSIONS : "anchors"
+    MOTIONS ||--o{ CASE_PREPS : "scoped-to"
+    CASE_PREPS ||--o{ ARGUMENT_EMBEDDINGS : "vectorizes"
+    DEBATE_SESSIONS ||--|{ TURNS : "contains"
+    DEBATE_SESSIONS ||--o{ POIS : "interrupted-by"
+    DEBATE_SESSIONS ||--|| ADJUDICATION_RESULTS : "produces"
+    DEBATE_SESSIONS ||--o{ AI_CALL_LOGS : "traces"
+    DEBATE_SESSIONS ||--o{ USER_PERFORMANCE : "scores"
+
+    USERS {
+        uuid id PK
+        text email
+        text display_name
+        enum skill_level
+        timestamp created_at
+    }
+    MOTIONS {
+        uuid id PK
+        text motion_text
+        enum category
+        bool is_custom
+    }
+    CASE_PREPS {
+        uuid id PK
+        uuid user_id FK
+        uuid motion_id FK
+        enum side
+        jsonb arguments
+        jsonb counter_arguments
+        jsonb evidence
+    }
+    ARGUMENT_EMBEDDINGS {
+        uuid id PK
+        uuid case_prep_id FK
+        uuid match_id
+        text content
+        vector_1024 embedding
+        text role
+        text side
+    }
+    DEBATE_SESSIONS {
+        uuid id PK
+        uuid user_id FK
+        uuid motion_id FK
+        uuid case_prep_id FK
+        enum format
+        text human_role
+        enum skill_level
+        enum status
+        bool poi_enabled
+    }
+    TURNS {
+        uuid id PK
+        uuid session_id FK
+        int turn_number
+        text speaker_role
+        enum speaker_type
+        text transcript_text
+        float duration_seconds
+        float stt_confidence_avg
+    }
+    POIS {
+        uuid id PK
+        uuid session_id FK
+        uuid turn_id FK
+        text poi_text
+        enum outcome
+    }
+    ADJUDICATION_RESULTS {
+        uuid id PK
+        uuid session_id FK
+        text winning_team
+        float gov_total_score
+        float opp_total_score
+        jsonb clash_table
+        jsonb speaker_scores
+    }
+    USER_PERFORMANCE {
+        uuid id PK
+        uuid user_id FK
+        uuid session_id FK
+        text speaker_role
+        float total_score
+        float argument_score
+        text written_feedback
+    }
+    AI_CALL_LOGS {
+        uuid id PK
+        uuid session_id FK
+        text agent_name
+        text prompt_used
+        text model_version
+        float temperature
+        text raw_output
+    }
+```
+
+---
+
+## 🔍 RAG & Vector Search
+
+**Module:** [`src/ai/tools/rag_engine.py`](src/ai/tools/rag_engine.py)
+
+| Aspect | Detail |
+|--------|--------|
+| Embedding model | `cohere/embed-english-v3.0` · 1024-dim |
+| Storage | `argument_embeddings.embedding VECTOR(1024)` (pgvector) |
+| Distance | Cosine (`<=>` operator) |
+| Filters | `match_id` (always) · `side` (always) · `role` (optional) · `motion_category` |
+| Throttled top-k | 1 / 3 / 5 by difficulty |
+
+**Why metadata-bound RAG?** Each match generates its own case-prep embeddings. The AI only retrieves arguments **scoped to its own match and side** — no cross-match contamination, no opponent intel leaking across teams.
+
+```python
+results = await session.execute(
+    select(ArgumentEmbedding)
+    .where(ArgumentEmbedding.match_id == match_id)
+    .where(ArgumentEmbedding.side == side)
+    .order_by(ArgumentEmbedding.embedding.cosine_distance(query_vec))
+    .limit(top_k)
+)
+```
+
+---
+
+## 🔴 Redis Event Contract
+
+### Channel Pattern
+```
+debate:{match_id}:turns
+```
+
+The consumer uses `psubscribe("debate:*")` to fan in events from all live matches in one event loop.
+
+### Inbound (handled)
+| Event | Source | Effect |
+|-------|--------|--------|
+| `START_MATCH` | Frontend (via Gateway) | Init `LiveMatchState` · determine first speaker · spawn first task |
+| `TURN_CHANGED` | Gateway | Persist previous turn (human or AI) · advance schedule · spawn next AI or notify frontend |
+| `MATCH_COMPLETE` | Internal | Mark `status=finished` · `asyncio.create_task(run_adjudication_worker(...))` |
+
+### Outbound (published)
+| Event | Payload |
+|-------|---------|
+| `TURN_STARTED` | `{ event, speaker, role, side, turn_index }` |
+| `AI_TOKEN` | `{ event, text }` (one per LLM token) |
+| `AI_THOUGHT_COMPLETE` | `{ event }` |
+| `MATCH_COMPLETE` | `{ event, match_id, message }` |
+| `ADJUDICATION_STARTED` | `{ event }` |
+| `ADJUDICATION_COMPLETE` | `{ event, verdict, gov_total_score, opp_total_score, ... }` |
+| `ADJUDICATION_ERROR` | `{ event, error_message }` |
+
+### Match State (Redis JSON)
+Key: `match_state:{matchId}` · TTL: 7200 s
+
+```json
+{
+  "match_id": "...",
+  "format_type": "ap",
+  "status": "in_progress",
+  "current_turn_index": 3,
+  "schedule": [
+    { "role": "prime_minister",       "side": "government", "player_type": "ai"    },
+    { "role": "leader_of_opposition", "side": "opposition", "player_type": "human" },
+    ...
+  ],
+  "transcript": [ {...}, {...} ]
+}
+```
+
+> The Gateway is the only writer to `current_turn_index`. The engine **reads** state but never increments the turn counter — single source of truth.
+
+---
+
+## 📡 REST API
+
+Base URL: `/api/v1` (mounted at `:8000`, fronted by the Go Gateway at `:8080/api/v1/...`)
+
+### Auth
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/auth/verify-supabase` | Verify Supabase JWT, return user |
+
+### Motions & Users
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET·POST` | `/motions` | List / create motions |
+| `GET·PATCH` | `/users/me` | Profile |
+| `GET` | `/users/stats` | Aggregate match stats |
+
+### AP & BP Matches (mirrored)
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/{ap\|bp}/matches` | Create match · seed CasePrep · embed arguments |
+| `GET` | `/{ap\|bp}/matches` | Paginated list |
+| `GET` | `/{ap\|bp}/matches/{id}` | Single match + turns |
+| `PATCH` | `/{ap\|bp}/matches/{id}` | Update status |
+| `GET` | `/{ap\|bp}/matches/{id}/case-prep` | AI-generated brief |
+| `GET` | `/{ap\|bp}/matches/{id}/adjudication` | Final result |
+| `GET` | `/{ap\|bp}/matches/{id}/adjudication/status` | Polling endpoint |
+
+> Auto-generated docs: `http://localhost:8000/docs` (Swagger UI) · `/redoc`.
+
+---
+
+## 🧰 Tech Stack
+
+### Core
+| Tech | Version | Why |
+|------|---------|-----|
+| **Python** | 3.10+ | Async ergonomics |
+| **FastAPI** | 0.135 | Async-first · Pydantic v2 · auto OpenAPI |
+| **Uvicorn** | 0.42 | ASGI server |
+| **SQLAlchemy** | 2.0 | Modern ORM with `select()` style |
+| **Alembic** | 1.18 | Schema migrations |
+| **psycopg2-binary** | 2.9 | Postgres driver |
+| **redis (asyncio)** | 7.4 | Pub/Sub + state |
+| **pgvector** | 0.4 | Cosine vector search |
+
+### AI
+| Tech | Why |
+|------|-----|
+| **Groq** (`llama-3.1-8b-instant`) | Sub-second token streaming for live turns |
+| **OpenAI** (`gpt-4o-mini`) | Reliable case-prep fallback |
+| **Cohere** (`embed-english-v3.0`) | 1024-dim embeddings for RAG |
+| **LangChain 1.2** | Streaming callback infra |
+| **sentence-transformers** | Local fallback embeddings |
+| **Langfuse** | Trace / observability |
+
+### Validation
+| Tech | Why |
+|------|-----|
+| **Pydantic 2.12** | Schema validation |
+| **pydantic-settings** | Typed env loading |
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.10+
-- PostgreSQL 14+
-- Redis 7+
-- Docker & Docker Compose (optional, recommended)
+- **Python** ≥ 3.10
+- **PostgreSQL** ≥ 14 with **pgvector** extension
+- **Redis** ≥ 7 (local or Upstash)
+- **Groq**, **Cohere**, **Supabase** accounts
 
-### Local Development
+### Install
 
-#### 1. Clone & Setup
 ```bash
-git clone https://github.com/im-rk/agora-ai-engine.git
+git clone <repo-url>
 cd agora-ai-engine
 
-# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+.venv\Scripts\activate      # Windows
+# source .venv/bin/activate # Mac/Linux
 
-# Install dependencies
 pip install -r requirements.txt
+# or with uv (faster):
+# uv sync
 ```
 
-#### 2. Environment Configuration
+### Configure
+
 ```bash
-# Copy example config
 cp .env.example .env
-
-# Edit .env with your credentials
-# Required keys:
-# - DATABASE_URL=postgresql://user:pass@localhost/agora_ai
-# - REDIS_URL=redis://localhost:6379
-# - GROQ_API_KEY=<your-groq-key>
-# - COHERE_API_KEY=<your-cohere-key>
-# - ELEVENLABS_API_KEY=<your-elevenlabs-key>
+# Fill in real values (see below)
 ```
 
-#### 3. Database Setup
+### Database
+
 ```bash
+# Enable pgvector once on the Postgres DB
+psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
 # Run migrations
 alembic upgrade head
-
-# Seed initial data (optional)
-python -c "from src.models import setup_db; setup_db()"
 ```
 
-#### 4. Start Services
+### Run
+
 ```bash
-# Using Docker Compose (recommended)
-docker-compose up -d postgres redis
-
-# Or run locally
-# Terminal 1: Redis
-redis-server
-
-# Terminal 2: PostgreSQL (if not containerized)
-# Terminal 3: Python worker
+# Single command — starts both FastAPI and the Redis consumer
 python main.py
-
-# Terminal 4: API server (if separate)
+# or
 uvicorn main:app --reload --port 8000
 ```
 
-#### 5. Verify Setup
+### Verify
+
 ```bash
-# Check Redis connection
-redis-cli ping  # Should return PONG
-
-# Check PostgreSQL
-psql $DATABASE_URL -c "SELECT version();"
-
-# Check API
-curl http://localhost:8000/health
+curl http://localhost:8000/        # {"status": "ok"}
+open http://localhost:8000/docs    # Swagger UI
 ```
 
 ---
 
-## 🔄 Core Workflows
+## 🔑 Environment Variables
 
-### 1. Starting a Match
-```
-User initiates match (AP/BP, motion, side, role, skill_level)
-        ↓
-POST /api/matches → Create DebateSession + CasePrep
-        ↓
-Publish START_MATCH event to Redis
-        ↓
-Consumer receives → Determines first speaker
-        ↓
-If AI first → generate_ai_response() starts
-If Human first → Frontend notified to activate mic
-```
+`.env.example`:
 
-### 2. AI Turn Generation (4-Phase Pipeline)
-```
-generate_ai_response(match_id, turn_index)
-        ↓
-Phase 1: Parse clash matrix from transcript
-        ↓
-Phase 2: Generate queries (throttled by difficulty)
-        ↓
-Phase 3: Search & rank evidence from case prep embeddings
-        ↓
-Phase 4: Stream generation + persist Turn record
-        ↓
-Publish TURN_STARTED event (speaker: "ai", role, turn_index)
-        ↓
-Frontend receives → Start ElevenLabs TTS → Play audio
-        ↓
-Audio finishes → Frontend captures timing (start, end, duration)
-        ↓
-Frontend publishes TURN_CHANGED with timing data
-```
+```env
+# Database
+DATABASE_URL=postgresql://user:pass@localhost:5432/agora_ai
 
-### 3. Turn Persistence
-```
-Consumer receives TURN_CHANGED
-        ↓
-Extract: ai_speech_duration_ms, ai_speech_start_time_utc, ai_speech_end_time_utc
-        ↓
-Call update_turn_timing()
-        ↓
-Database: Turn record updated with (started_at, ended_at, duration_seconds)
-```
+# Redis (local or Upstash)
+REDIS_URL=rediss://default:<pass>@<host>.upstash.io:6379
 
-### 4. Match Completion & Adjudication
-```
-Consumer detects current_turn_index >= len(schedule)
-        ↓
-Mark match status = "finished"
-        ↓
-Publish MATCH_COMPLETE event
-        ↓
-Spawn run_adjudication_worker() async task
-        ↓
-Worker evaluates each speaker (argumentation quality, persuasiveness)
-        ↓
-Persist SpeakerScore records
-        ↓
-Publish ADJUDICATION_COMPLETE with results
-```
+# LLMs
+GROQ_API_KEY=gsk_...
+OPENAI_API_KEY=sk-...           # optional fallback
+COHERE_API_KEY=...
 
----
+# Auth
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_KEY=eyJhbGciOi...
 
-## 🗣️ Debate Formats
-
-### Asian Parliamentary (AP)
-- **Structure**: 6 speakers (3 gov, 3 opp), alternating speeches
-- **Speech Duration**: ~7 minutes each
-- **Roles**:
-  - Government: Prime Minister (PM), Deputy PM (DPM), Member of Government (MG)
-  - Opposition: Leader of Opposition (LO), Deputy LO (DLO), Member of Opposition (MO)
-- **Implementation**: [src/ai/prompts/debater_prompts.py](src/ai/prompts/debater_prompts.py#L1-L50)
-
-### British Parliamentary (BP)
-- **Structure**: 8 speakers (4 teams), 2 speakers per team
-- **Speech Duration**: ~8 minutes each
-- **Teams**:
-  - Opening Government, Opening Opposition
-  - Closing Government, Closing Opposition
-- **Roles**: Prime Minister, Deputy PM, Member, Whip (per team)
-- **Implementation**: [src/ai/prompts/debater_prompts.py](src/ai/prompts/debater_prompts.py#L100-L150)
-
----
-
-## 📊 Difficulty System
-
-### Architecture
-Configuration-driven difficulty control with **3 independent levers**:
-
-```python
-# From src/core/difficulty.py
-DIFFICULTY_MATRIX = {
-    "beginner": {
-        "info_throttle": {"max_search_queries": 1, "rag_top_k": 1},
-        "memory_drop": {"argument_drop_probability": 0.5},
-        "persona": {"temperature": 0.8, "persona_modifier": "..."}
-    },
-    "intermediate": {...},
-    "advanced": {...}
-}
-```
-
-### Implementation in Debater Agent
-- **Phase 2**: Query count limiting
-- **Phase 3**: Top-k filtering (evidence count)
-- **Phase 4**: Temperature + persona injection
-
-### Database
-- User.skill_level: Enum(BEGINNER, INTERMEDIATE, ADVANCED)
-- DebateSession.skill_level: Inherited from user at match creation
-
----
-
-## 📡 API Reference
-
-### Match Endpoints
-
-#### Create Match
-```http
-POST /api/matches
-Content-Type: application/json
-
-{
-  "motion": "This house believes AI should regulate itself",
-  "format": "ap",  # or "bp"
-  "side": "government",
-  "role": "prime_minister",
-  "skill_level": "intermediate"
-}
-
-Response: 201 Created
-{
-  "id": "uuid",
-  "status": "started",
-  "format": "ap",
-  "user_role": "prime_minister",
-  "created_at": "2025-04-30T10:30:00Z"
-}
-```
-
-#### Get Match
-```http
-GET /api/matches/{match_id}
-
-Response: 200 OK
-{
-  "id": "uuid",
-  "status": "finished",
-  "format": "ap",
-  "turns": [
-    {
-      "turn_index": 0,
-      "speaker_role": "prime_minister",
-      "speaker_type": "ai",
-      "transcript": "Thank you, Mr. Speaker...",
-      "started_at": "2025-04-30T10:30:00Z",
-      "ended_at": "2025-04-30T10:37:00Z",
-      "duration_seconds": 420
-    }
-  ]
-}
-```
-
-### Redis Event Schema
-
-#### START_MATCH
-```json
-{
-  "action": "START_MATCH",
-  "match_id": "uuid"
-}
-```
-
-#### TURN_CHANGED
-```json
-{
-  "action": "TURN_CHANGED",
-  "match_id": "uuid",
-  "ai_speech_start_time_utc": "2025-04-30T10:30:00Z",
-  "ai_speech_end_time_utc": "2025-04-30T10:37:00Z",
-  "ai_speech_duration_ms": 420000
-}
+# Observability
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
 ---
 
 ## 🛠️ Development
 
-### Running Tests
+### Tests
 ```bash
-# Unit tests
 pytest tests/unit -v
-
-# Integration tests (requires DB)
 pytest tests/integration -v
-
-# With coverage
 pytest --cov=src tests/
 ```
 
-### Code Quality
+### Lint & Type-check
 ```bash
-# Linting
-pylint src/
-
-# Type checking
-mypy src/
-
-# Formatting
 black src/
-
-# All checks
-make lint  # If Makefile exists
+mypy src/
+pylint src/
 ```
 
-### Adding New Features
+### Database
 
-#### 1. New Debate Format
-- Create `src/ai/prompts/[format]_prompts.py`
-- Update `DebaterAgent.normalize_role()` with mapping
-- Add constraints to `src/engine/rules.py`
-- Create repository: `src/repositories/[format]/matches.py`
+```bash
+# New migration after model change
+alembic revision --autogenerate -m "describe change"
 
-#### 2. New LLM Service
-- Create client in `src/ai/clients/[service]_client.py`
-- Implement interface: `invoke(prompt, **kwargs) → str`
-- Register in `src/services/llm_service.py`
-- Add to `config.py` for routing
+# Apply
+alembic upgrade head
 
-#### 3. New Event Type
-- Define event structure in consumer
-- Add handler in `start_redis_consumer()`
-- Publish via `client.publish(channel, json.dumps(event))`
+# Roll back
+alembic downgrade -1
+```
+
+### Add a New Debate Format
+
+1. Create `src/ai/prompts/<format>/debater_prompts.py` with the 4-phase prompt set.
+2. Extend `MatchFormat` enum in `src/models/debate.py` and add the migration.
+3. Add `MatchStateManager._generate_<format>_schedule()` in `src/engine/state.py`.
+4. Add `src/repositories/<format>/matches.py` and `src/services/<format>/matches.py`.
+5. Mount routes under `src/api/routes/v1/<format>/`.
+6. Update the frontend's `FORMAT_ROLES` map and the gateway's voice ID mapping.
+
+### Add a New LLM Provider
+
+1. Create `src/ai/clients/<provider>_client.py` exposing an async `invoke()`.
+2. Wire it into `src/services/llm_service.py` selection logic.
+3. Add API key to `.env.example` and `src/core/config.py`.
 
 ---
 
 ## 🚢 Deployment
 
-### Docker Build
+### Docker
+
 ```bash
 docker build -t agora-ai-engine:latest .
 
 docker run -d \
+  --name agora-ai-engine \
   --env-file .env \
+  -p 8000:8000 \
   --network agora-net \
   agora-ai-engine:latest
 ```
 
-### Kubernetes Deployment
+### Cloud Run / ECS Notes
+
+- **CPU:** 2 vCPU baseline (LLM I/O is async; CPU is for embeddings)
+- **Memory:** 2 GB (sentence-transformers + LangChain)
+- **Concurrency:** start at **1 instance** while Redis Pub/Sub is the event broker (multiple instances → duplicate AI generation). Migrate to **Redis Streams + Consumer Groups** before horizontally scaling.
+
+### Production Checklist
+- [ ] `DATABASE_URL` points to managed Postgres with pgvector
+- [ ] `CREATE EXTENSION vector` executed
+- [ ] `alembic upgrade head` run on the prod DB
+- [ ] Connection pooling (PgBouncer / Supavisor) in front of Postgres
+- [ ] `GROQ_API_KEY` quota sized for peak concurrent matches
+- [ ] Langfuse keys set for trace export
+- [ ] Single-instance constraint enforced (HPA min=max=1) until streams migration
+
+---
+
+## 📊 Observability
+
+### Structured Logs
+
+All log lines are prefixed:
+```
+[CONSUMER]            redis_consumer.py
+[AI]                  ai_response_generator.py
+[HUMAN]               human turn persistence
+[ADJUDICATION WORKER] adjudication_worker.py
+[DEBATER]             debater agent
+[ADJUDICATOR]         adjudicator agent
+[RAG]                 retrieval engine
+```
+
+### LLM Trace Persistence
+
+Every Phase write a row to `ai_call_logs`:
+```
+agent_name · prompt_used · model_version · temperature · raw_output
+```
+This is the audit trail for every AI decision in the platform — invaluable for debugging hallucinations, prompt regressions, and latency spikes.
+
+### Langfuse Integration
+Set `LANGFUSE_*` env vars to stream every LLM call to Langfuse for cost / latency / quality dashboards.
+
+---
+
+## 🐛 Troubleshooting
+
+<details>
+<summary><b>Consumer doesn't fire on START_MATCH</b></summary>
+
+Verify the gateway is publishing to the right channel:
 ```bash
-# Apply ConfigMap + Secrets
-kubectl apply -f k8s/
-
-# Deploy
-kubectl apply -f k8s/deployment.yaml
-
-# Check status
-kubectl get pods -l app=agora-ai-engine
+redis-cli psubscribe "debate:*"
 ```
+You should see `START_MATCH` arrive when the frontend connects.
+</details>
 
-### Environment Variables (Production)
+<details>
+<summary><b>"connection failed" on Redis</b></summary>
+
+For Upstash, the URL must use `rediss://` (TLS). For local Redis, `redis://`.
+</details>
+
+<details>
+<summary><b>Two AI speeches generated for one turn</b></summary>
+
+Multiple consumer instances are listening to the same channel. Set instance count to **1** until you migrate to Redis Streams + Consumer Groups.
+</details>
+
+<details>
+<summary><b>Adjudication scores don't add up</b></summary>
+
+Likely an LLM arithmetic hallucination. The `_recalculate_totals()` post-processor should overwrite. Check `[ADJUDICATOR] recalculated` log lines.
+</details>
+
+<details>
+<summary><b>RAG returns 0 results</b></summary>
+
+```sql
+SELECT count(*) FROM argument_embeddings WHERE match_id = '<uuid>';
 ```
-DATABASE_URL=postgresql://prod-user:secure-pass@prod-db/agora_prod
-REDIS_URL=redis://prod-redis:6379
-GROQ_API_KEY=gsk_xxx
-COHERE_API_KEY=cohere_xxx
-ELEVENLABS_API_KEY=xxx
-LOG_LEVEL=info
-SENTRY_DSN=https://xxx@sentry.io/xxx
-```
+If zero, the embedding pipeline didn't run during match creation. Check `[CASE_PREP] embedded N args` log lines.
+</details>
+
+<details>
+<summary><b>Groq 429 rate limit</b></summary>
+
+The free tier rate-limits aggressively. Solutions:
+- Upgrade Groq plan
+- Add exponential backoff in `groq_client.py`
+- Switch debater to OpenAI fallback via `llm_service.py`
+</details>
 
 ---
 
-## 🤝 Contributing
+## 🎓 Industry Patterns Used
 
-### Branch Strategy
-- `main`: Production-ready code
-- `develop`: Integration branch
-- `feature/[feature-name]`: New features
-- `bugfix/[issue-id]`: Bug fixes
+### Async-First, Lifespan-Managed Background Worker
+The Redis consumer is owned by FastAPI's `lifespan` context — same process, same observability surface, but doesn't block the request loop.
 
-### Commit Convention
-```
-feat: Add new difficulty lever
-fix: Resolve query count limiting bug
-docs: Update README
-refactor: Simplify debate orchestrator
-test: Add test coverage for adjudicator
-```
+### Streaming via LangChain Callbacks
+`AsyncCallbackHandler.on_llm_new_token` → `redis.publish` is the cleanest possible bridge from a Python LLM stream into a Go gateway's pub/sub fan-out.
 
-### PR Requirements
-1. ✅ Tests pass (`pytest`)
-2. ✅ Type hints present (`mypy`)
-3. ✅ Code formatted (`black`)
-4. ✅ Docstrings added
-5. ✅ Changelog updated
+### Hallucination Guards
+LLMs are notoriously bad at arithmetic. `_recalculate_totals()` overrides any LLM-emitted sum with deterministic Python math before persistence.
 
----
+### Format-Specific Prompt Trees
+AP and BP keep separate prompt directories. Each role's prompt enforces its WUDC duties verbatim — no role bleed.
 
-## 🔍 Troubleshooting
+### Difficulty as a Single Source of Truth
+One Pydantic config object flows through Phases 2/3/4. Tunable from one file; tested in one file.
 
-### Common Issues
+### Schedule-Driven Orchestration
+The consumer reads `LiveMatchState.schedule` to decide what happens next — not the LLM. The LLM is a *worker*, never a controller.
 
-#### Redis Connection Error
-```
-Error: ConnectionRefusedError: [Errno 111] Connection refused
-```
-**Solution:**
-```bash
-# Check Redis is running
-redis-cli ping
-
-# Or start with Docker
-docker-compose up -d redis
-```
-
-#### Database Migration Failed
-```
-Error: FAILED NEW instance() due to IntegrityError
-```
-**Solution:**
-```bash
-# Check current revision
-alembic current
-
-# Downgrade and re-run
-alembic downgrade -1
-alembic upgrade head
-```
-
-#### LLM Rate Limiting
-```
-Error: groq.RateLimitError: 429 Too Many Requests
-```
-**Solution:**
-- Implement exponential backoff in `groq_client.py`
-- Check Groq API quota
-- Use fallback to OpenAI via `llm_service.py`
-
-#### Timing Data Missing
-```
-Turn.duration_seconds = 0, Turn.ended_at = NULL
-```
-**Solution:**
-- Verify frontend sends timing in TURN_CHANGED event
-- Check Redis event payload: `redis-cli SUBSCRIBE "debate:*"`
-- Verify `update_turn_timing()` is called in consumer
+### Per-Match Task Tracking
+`active_tasks: dict[str, asyncio.Task]` ensures only one AI generation runs per match — protects against duplicate publishes during reconnect storms.
 
 ---
 
-## 📊 Metrics & Monitoring
+## 🚧 Roadmap
 
-### Key Metrics to Track
-- **Debate Duration**: Total match time (started_at → completion)
-- **Turn Duration**: Per-speaker speech time (frontend-measured)
-- **LLM Latency**: Generation time per phase
-- **Vector Search Latency**: Embedding retrieval time
-- **Adjudication Time**: Grading async task duration
-
-### Logging
-```python
-logger.info(
-    f"[CONSUMER] Match {match_id} completed in {duration:.2f}s",
-    extra={
-        "match_id": match_id,
-        "format": format_type,
-        "speakers": len(schedule),
-        "duration_seconds": duration
-    }
-)
-```
+| Area | Today | Next |
+|------|-------|------|
+| **Event broker** | Redis Pub/Sub (single instance) | Redis Streams + Consumer Groups → horizontal scale |
+| **Adjudication** | Single-pass 5-phase | Ensemble of 3 adjudicators, majority vote |
+| **RAG corpus** | Match-scoped only | Cross-match knowledge with strict isolation |
+| **Personality** | 3 difficulty bands | User-defined judge / opponent personalities |
+| **Spectator mode** | Solo only | Live broadcast + queueable Hub |
+| **Multilingual** | English-only | Cohere multilingual embeddings + Hindi/Tamil debates |
 
 ---
 
-## 📚 Additional Resources
+## 📚 Further Reading
 
-- [Debate Formats Guide](docs/DEBATE_FORMATS.md)
-- [LLM Integration Guide](docs/LLM_INTEGRATION.md)
-- [Architecture Decision Records](docs/ADRs/)
-- [Performance Tuning](docs/PERFORMANCE.md)
-- [API Documentation](docs/API.md)
-
----
-
-## 📄 License
-
-MIT License - See [LICENSE](LICENSE) for details
-
----
-
-## 👥 Maintainers
-
-- **Core Team**: [Your Team]
-- **Technical Lead**: [Name]
-
-For questions or issues, please open a GitHub issue or reach out to the team.
+- [`agora_system_architecture.md`](../agora_system_architecture.md) — full ecosystem architecture
+- [`production_grade_architecture.md`](../production_grade_architecture.md) — production hardening notes
+- [`agora-frontend`](../agora-frontend) — sibling Next.js arena UI
+- [`agora-gateway`](../agora-gateway) — sibling Go socket broker
+- [Groq API](https://console.groq.com/docs)
+- [pgvector](https://github.com/pgvector/pgvector)
+- [LangChain async callbacks](https://python.langchain.com/docs/modules/callbacks/)
 
 ---
 
@@ -756,15 +1018,18 @@ For questions or issues, please open a GitHub issue or reach out to the team.
 If you use Agora AI Engine in research or production, please cite:
 
 ```bibtex
-@software{agora_ai_engine_2025,
-  title={Agora AI Engine: Real-time Competitive Debate Orchestration},
-  author={[Author Names]},
-  year={2025},
-  url={https://github.com/im-rk/agora-ai-engine}
+@software{agora_ai_engine_2026,
+  title  = {Agora AI Engine: Real-time Competitive Debate Orchestration},
+  author = {The Agora Team},
+  year   = {2026},
+  url    = {https://github.com/agora-ai-engine}
 }
 ```
 
 ---
 
-**Last Updated**: April 30, 2025  
-**Status**: Production Ready ✅
+<div align="center">
+
+**Built with 🧠 in Python · The Brain of Agora**
+
+</div>
