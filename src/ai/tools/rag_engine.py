@@ -4,6 +4,11 @@ RAG Engine: Retrieval-Augmented Generation for debate case prep.
 Uses PostgreSQL pgvector for semantic search over prepared arguments,
 counter-arguments, and evidence to support live debate responses.
 
+Embedding model: Cohere embed-english-v3.0 (same as storage pipeline in
+embedding_service.py). Using the same model for both storage and retrieval
+ensures vectors live in the same semantic space, producing accurate
+cosine-similarity results.
+
 Features:
 - Same-match filtering: Get arguments from THIS debate only
 - Side filtering: Get Government or Opposition arguments
@@ -11,27 +16,16 @@ Features:
 - Metadata-aware: Smart filtering prevents confusion
 """
 
-from functools import lru_cache
 from typing import Optional, List, Dict
-from langchain_huggingface import HuggingFaceEmbeddings
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from src.core.database import SessionLocal
 from src.models.setup import ArgumentEmbedding
-from src.core.config import settings
+from src.services.embedding_service import get_embedding
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-@lru_cache(maxsize=1)
-def get_embeddings_model():
-    """Get cached HuggingFace embeddings model."""
-    return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-roberta-large-v1",
-        model_kwargs={"device": "cpu"}
-    )
 
 
 class RAGEngine:
@@ -41,6 +35,11 @@ class RAGEngine:
     ONLY used in Debater Agent to retrieve relevant arguments/counter-arguments
     from vector database during live debate.
     
+    Uses Cohere embed-english-v3.0 for query embedding — the SAME model used
+    by embedding_service.py when storing case prep vectors. This alignment is
+    critical: mismatched embedding models produce vectors in different semantic
+    spaces, making cosine similarity meaningless.
+    
     Uses metadata filtering to ensure arguments are:
     - From the SAME debate (match_id filter)
     - From the CORRECT side (side filter)
@@ -48,8 +47,27 @@ class RAGEngine:
     """
     
     def __init__(self):
-        """Initialize RAG engine with embeddings model."""
-        self.embeddings = get_embeddings_model()
+        """Initialize RAG engine.
+        
+        No model loading required — Cohere embeddings are generated via API
+        call through embedding_service.get_embedding().
+        """
+        pass
+    
+    def _embed_query(self, text: str) -> List[float]:
+        """Generate embedding for a search query using Cohere.
+        
+        Uses the same Cohere embed-english-v3.0 model as the storage
+        pipeline (embedding_service.get_embedding) to ensure vector
+        space consistency.
+        
+        Args:
+            text: The query text to embed.
+            
+        Returns:
+            List of floats representing the embedding vector.
+        """
+        return get_embedding(text)
     
     async def aretrieve_counter_arguments(
         self,
@@ -83,8 +101,8 @@ class RAGEngine:
         """
         db = None
         try:
-            # Embed the query
-            query_embedding = self.embeddings.embed_query(topic)
+            # Embed the query using the SAME Cohere model as storage
+            query_embedding = self._embed_query(topic)
             
             # Get database session
             db = SessionLocal()
