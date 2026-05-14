@@ -74,14 +74,30 @@ class MatchStateManager:
         
         return schedule
     
+    def _calculate_match_duration(self, format_type: str) -> int:
+        """
+        Calculate total match duration in seconds based on debate format.
+        
+        AP (Asian Parliamentary): 6 speakers × 5 minutes = 1800 seconds
+        BP (British Parliamentary): 8 speakers × 5 minutes = 2400 seconds
+        
+        Returns:
+            int: Total match duration in seconds
+        """
+        if format_type.lower() in ["asian parliamentary", "ap"]:
+            return 6 * 300  # 6 speakers × 5 mins = 1800 seconds
+        elif format_type.lower() in ["british parliamentary", "bp"]:
+            return 8 * 300  # 8 speakers × 5 mins = 2400 seconds
+        else:
+            return 10 * 300  # Default 50 mins for unknown format
+    
     async def initialize_match(self, match_id: str, human_side: str, format_type: str, preferred_role: str = None) -> LiveMatchState:
         """Creates a initial game state and save it to Redis."""
         await self._ensure_connection()
         full_schedule = self._generate_schedule(format_type, human_side, preferred_role)
         
-        # Set absolute timestamp for turn expiration (CRITICAL for rejoin)
+        # Set match start time (absolute timestamp, never changes)
         now = int(datetime.now(timezone.utc).timestamp())
-        turn_duration = 300  # 5 minutes per turn
         
         state = LiveMatchState(
             match_id=match_id,
@@ -89,7 +105,12 @@ class MatchStateManager:
             status="IN_PROGRESS",  # Uppercase to match Literal enum
             current_turn_index=0,
             schedule=full_schedule,
-            turn_expires_at=now + turn_duration,  # Unix timestamp (absolute, not relative)
+            # === NEW TIMER MODEL ===
+            match_started_at=now,                                      # When match began
+            match_duration_seconds=self._calculate_match_duration(format_type),  # Total duration
+            current_turn_duration_seconds=300,                         # Current speaker's turn (5 mins)
+            total_offline_duration=0,                                  # No offline time yet
+            # === CONNECTION & AI STATE ===
             is_user_connected=True,  # User starts connected
             last_connected_at=now,  # Track when connection established
             ai_stream_status="IDLE",  # No AI generating yet

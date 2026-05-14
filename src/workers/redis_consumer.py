@@ -395,19 +395,15 @@ async def start_redis_consumer():
                         }))
                         continue
                     
-                    # ===== CRITICAL: Extend deadline if human was speaking =====
-                    current_speaker = state.schedule[state.current_turn_index]
+                    # ===== CRITICAL: Accumulate offline duration =====
                     now = int(datetime.now(timezone.utc).timestamp())
+                    offline_duration = now - state.last_connected_at
+                    state.total_offline_duration += offline_duration
                     
-                    if current_speaker.player_type == "human" and state.status == "PAUSED":
-                        # User was speaking (timer was paused)
-                        # Extend deadline by offline duration
-                        offline_duration = now - state.last_connected_at
-                        state.turn_expires_at += offline_duration
-                        logger.info(
-                            f"[CONSUMER] Extended turn deadline by {offline_duration}s "
-                            f"for offline duration (user gets their time back)"
-                        )
+                    logger.info(
+                        f"[CONSUMER] Accumulated offline duration: {offline_duration}s, "
+                        f"total: {state.total_offline_duration}s"
+                    )
                     
                     # Mark user as reconnected
                     state.is_user_connected = True
@@ -416,6 +412,7 @@ async def start_redis_consumer():
                     await state_manager.update_state(state)
                     
                     # ===== CRITICAL: Send catch-up buffer if AI was generating =====
+                    current_speaker = state.schedule[state.current_turn_index]
                     if (current_speaker.player_type == "ai" and 
                         state.ai_stream_status in ["STREAMING", "COMPLETED"] and
                         state.active_stream_buffer):

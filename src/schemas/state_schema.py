@@ -19,11 +19,16 @@ class LiveMatchState(BaseModel):
     current_turn_index: int = 0
     schedule: List[Turn]
     
-    # === Timer: ABSOLUTE Timestamps (CRITICAL for rejoin!) ===
-    # Unix timestamp when this turn expires
-    # NEVER changes during the turn (even if user disconnects)
-    # Extends only when user reconnects from PAUSED state
-    turn_expires_at: Optional[int] = None
+    # === Timer: Match-based with offline tracking (CRITICAL for rejoin!) ===
+    # Unix timestamp when match started (set once, never changes)
+    match_started_at: int = 0
+    # Total duration of entire match in seconds (computed from format)
+    # AP = 1800 (6 speakers × 5 mins), BP = 2400 (8 speakers × 5 mins)
+    match_duration_seconds: int = 1800
+    # Duration of current speaker's turn in seconds (300 for AP, varies for BP)
+    current_turn_duration_seconds: int = 300
+    # Accumulates all disconnection periods (grows when user rejoins)
+    total_offline_duration: int = 0
     
     # === Connection State (NEW - for rejoin tracking) ===
     # Whether user is currently connected on WebSocket
@@ -36,7 +41,7 @@ class LiveMatchState(BaseModel):
     # "IDLE" = not started, "STREAMING" = generating tokens, 
     # "PAUSED" = interrupted (user disconnected), "COMPLETED" = finished
     ai_stream_status: Literal["IDLE", "STREAMING", "PAUSED", "COMPLETED"] = "IDLE"
-    # Cache of tokens generated so far (used for mid-stream rejoin)
+    # Cache of tokens generated so far (used for rejoin recovery)
     active_stream_buffer: str = ""
     
     # === Data ===
@@ -45,28 +50,33 @@ class LiveMatchState(BaseModel):
     @property
     def time_remaining_seconds(self) -> int:
         """
-        Calculate remaining time dynamically from absolute timestamp.
+        Calculate remaining time based on active time (excluding offline periods).
         
-        This is the KEY to FAANG-level reconnection:
-        - We store turn_expires_at (immutable, in Redis)
-        - We CALCULATE time_remaining_seconds on every access
-        - If user reconnects after 10 mins, this auto-corrects
+        Timer Logic:
+        - match_started_at: When match began (absolute, never changes)
+        - current_turn_duration_seconds: How long THIS speaker gets (e.g., 300 for AP)
+        - total_offline_duration: Time accumulated from all disconnections
         
-        Example Timeline:
-          T=0:00  turn_expires_at = 1715340300 (now + 300 secs)
-          T=3:00  time_remaining = 1715340300 - now() = 180 seconds 
-          T=3:00  User disconnects (WebSocket closes)
-          T=8:00  User reconnects
-                  turn_expires_at EXTENDS to 1715340600 (300 more seconds added)
-                  time_remaining = 1715340600 - now() = 240 seconds (4 mins) 
+        Calculation:
+        1. elapsed_time = now() - match_started_at
+        2. active_time = elapsed_time - total_offline_duration (subtract offline periods)
+        3. time_remaining = current_turn_duration_seconds - active_time
+        
+        Example Timeline (AP Speaker, 5 min turn):
+          T=0:00  match_started_at = Unix(0), elapsed = 0, active = 0, remaining = 300
+          T=2:00  elapsed = 120, active = 120, remaining = 180
+          T=3:00  User disconnects (offline_duration = +180 on rejoin)
+          T=8:00  User rejoins:
+                  elapsed = 480
+                  active = 480 - 180 = 300
+                  remaining = 300 - 300 = 0 (turn is over!)
         
         Returns:
-            int: Seconds remaining (never negative, returns 0 if expired)
+            int: Seconds remaining in current speaker's turn (never negative)
         """
-        if not self.turn_expires_at:
-            return 300  # Default 5 minutes if not initialized
-        
         now = int(datetime.now(timezone.utc).timestamp())
-        remaining = self.turn_expires_at - now
+        elapsed_time = now - self.match_started_at
+        active_time = elapsed_time - self.total_offline_duration
+        remaining = self.current_turn_duration_seconds - active_time
         return max(0, remaining)  # Never show negative time
 
