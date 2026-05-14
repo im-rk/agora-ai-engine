@@ -10,7 +10,7 @@ A FastAPI service that orchestrates competitive parliamentary debates. It runs a
 
 <br/>
 
-[![Python](https://img.shields.io/badge/Python-3.10-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.135-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?style=for-the-badge)](https://www.sqlalchemy.org/)
 [![PostgreSQL](https://img.shields.io/badge/Postgres-14-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
@@ -23,7 +23,7 @@ A FastAPI service that orchestrates competitive parliamentary debates. It runs a
 <br/>
 
 <a href="https://skillicons.dev">
-  <img src="https://skillicons.dev/icons?i=python,fastapi,postgres,redis,docker,kubernetes,supabase,vscode,git,github&theme=dark" />
+  <img src="https://skillicons.dev/icons?i=python,fastapi,postgres,redis,supabase&theme=dark" />
 </a>
 
 <br/>
@@ -453,7 +453,7 @@ results = await session.execute(
 
 **Problem.** A separate worker process for the Redis consumer means two deployment artifacts, two health checks, two observability pipelines, two environments to keep in sync.
 
-**Solution.** The consumer runs as an `asyncio.create_task` from FastAPI's `lifespan`. One process, one container, one health endpoint. The REST API and the consumer share the same database pool, the same logging configuration, and the same shutdown signal. Scaling horizontally requires one constraint: Redis pub/sub is broadcast, so only one instance can run until we migrate to Redis Streams with consumer groups.
+**Solution.** The consumer runs as an `asyncio.create_task` from FastAPI's `lifespan`. One process, one deployment unit, one health endpoint. The REST API and the consumer share the same database pool, the same logging configuration, and the same shutdown signal. Scaling horizontally requires one constraint: Redis pub/sub is broadcast, so only one instance can run until we migrate to Redis Streams with consumer groups.
 
 ---
 
@@ -777,7 +777,7 @@ Auto-generated documentation: `http://localhost:8000/docs` (Swagger UI), `/redoc
 
 | Technology | Version | Purpose |
 |---|---|---|
-| Python | 3.10 | Async ergonomics |
+| Python | 3.12 | Async ergonomics, modern type hints |
 | FastAPI | 0.135 | Async-first, Pydantic v2, auto OpenAPI |
 | Uvicorn | 0.42 | ASGI server |
 | SQLAlchemy | 2.0 | Modern ORM with `select()` style |
@@ -793,9 +793,8 @@ Auto-generated documentation: `http://localhost:8000/docs` (Swagger UI), `/redoc
 | Groq (`llama-3.1-8b-instant`) | Sub-second token streaming for live turns |
 | OpenAI (`gpt-4o-mini`) | Reliable case-prep fallback |
 | Cohere (`embed-english-v3.0`) | 1024-dim embeddings for RAG |
-| LangChain 1.2 | Streaming callback infrastructure |
-| sentence-transformers | Local fallback embeddings |
-| Langfuse | Trace and observability |
+| LangChain 1.2 | Streaming callback infrastructure and prompt orchestration |
+| Langfuse | Trace and observability for every LLM call |
 
 ### Validation
 
@@ -810,7 +809,7 @@ Auto-generated documentation: `http://localhost:8000/docs` (Swagger UI), `/redoc
 
 ### Prerequisites
 
-- Python 3.10 or later
+- Python 3.12 or later (pinned in `pyproject.toml`)
 - PostgreSQL 14 or later with the **pgvector** extension
 - Redis 7 or later (local or Upstash)
 - Groq, Cohere, and Supabase accounts
@@ -943,34 +942,30 @@ alembic downgrade -1
 
 ## Deployment
 
-### Docker
+The engine is a standard ASGI application. It runs anywhere `uvicorn` runs — bare metal, a VM, or any managed Python runtime. There is no container image checked into this repository; producing one is a deployment concern, not a development concern.
+
+### Running in production
 
 ```bash
-docker build -t agora-ai-engine:latest .
-
-docker run -d \
-  --name agora-ai-engine \
-  --env-file .env \
-  -p 8000:8000 \
-  --network agora-net \
-  agora-ai-engine:latest
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
-### Cloud Run / ECS notes
+`--workers` must remain **1** while Redis pub/sub is the event broker. Multiple workers would each receive every event and duplicate AI generation. Horizontal scaling is gated on the Redis Streams migration listed in the [Roadmap](#roadmap).
 
-- **CPU.** 2 vCPU baseline. LLM I/O is async; CPU is used for embeddings and serialization.
-- **Memory.** 2 GB. sentence-transformers and LangChain are memory-hungry.
-- **Concurrency.** Start at 1 instance while Redis pub/sub is the event broker (multiple instances would duplicate AI generation). Migrate to Redis Streams with consumer groups before horizontally scaling.
+### Resource sizing
 
-### Production checklist
+- **CPU.** 2 vCPU is a reasonable baseline. LLM I/O is async, so CPU is consumed by embeddings, JSON serialization, and the consumer loop.
+- **Memory.** 2 GB. `langchain` and the LLM client stack are memory-hungry on import.
 
-- `DATABASE_URL` points to managed Postgres with pgvector.
-- `CREATE EXTENSION vector` executed.
-- `alembic upgrade head` run on the production DB.
-- Connection pooling (PgBouncer or Supavisor) in front of Postgres.
-- `GROQ_API_KEY` quota sized for peak concurrent matches.
-- Langfuse keys set for trace export.
-- Single-instance constraint enforced (HPA min = max = 1) until the Streams migration.
+### Pre-flight checklist
+
+- `DATABASE_URL` points to managed Postgres with pgvector available.
+- `CREATE EXTENSION vector` has been executed on the target database.
+- `alembic upgrade head` has been run against the target database.
+- Connection pooling (PgBouncer or Supabase Supavisor) is provisioned in front of Postgres.
+- `GROQ_API_KEY` quota is sized for the expected peak concurrent matches.
+- Langfuse keys are set if trace export is required.
+- Exactly one instance of the consumer is running.
 
 ---
 
