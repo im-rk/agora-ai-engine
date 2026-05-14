@@ -1087,6 +1087,6 @@ The free tier rate-limits aggressively. Options:
 
 <div align="center">
 
-<sub>Agora — Real-time competitive debate, built for the web.</sub>
+**Built with 🧠 in Python · The Brain of Agora**
 
 </div>
