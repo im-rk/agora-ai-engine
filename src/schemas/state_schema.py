@@ -43,6 +43,9 @@ class LiveMatchState(BaseModel):
     ai_stream_status: Literal["IDLE", "STREAMING", "PAUSED", "COMPLETED"] = "IDLE"
     # Cache of tokens generated so far (used for rejoin recovery)
     active_stream_buffer: str = ""
+    # Unix timestamp of when last audio chunk was sent to user
+    # Gateway uses this to know which chunks to resend on rejoin
+    chunks_last_sent_at: Optional[int] = None
     
     # === Data ===
     transcript: List[dict] = []

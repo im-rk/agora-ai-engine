@@ -121,6 +121,7 @@ async def generate_ai_response(
         # ===== PHASE 2: CHANGE 1 - Mark as streaming =====
         state.ai_stream_status = "STREAMING"
         state.active_stream_buffer = ""
+        state.chunks_last_sent_at = None  # Reset for new speaker (Gateway will track chunks during synthesis)
         await state_manager.update_state(state)
         logger.info(f"[AI] Marked ai_stream_status=STREAMING for {speaker_role}")
 

@@ -74,12 +74,49 @@ class MatchStateManager:
         
         return schedule
     
+    def _get_turn_duration(self, format_type: str, role: str) -> int:
+        """
+        Get the time allocated for a specific speaker based on format and role.
+        
+        AP (Asian Parliamentary):
+        - All speakers: 5 minutes (300 seconds)
+        
+        BP (British Parliamentary):
+        - Prime Minister, Leader of Opposition: 7 minutes (420 seconds)
+        - Deputy PM, Deputy LO: 7 minutes (420 seconds)
+        - Members: 4 minutes (240 seconds)
+        - Whips: 4 minutes (240 seconds)
+        
+        Returns:
+            int: Turn duration in seconds
+        """
+        format_lower = format_type.lower()
+        role_lower = role.lower()
+        
+        if format_lower in ["asian parliamentary", "ap"]:
+            # AP: All speakers get 5 minutes
+            return 300  # 5 minutes
+        
+        elif format_lower in ["british parliamentary", "bp"]:
+            # BP: Variable times based on role
+            if "prime minister" in role_lower or "leader of opposition" in role_lower:
+                return 420  # 7 minutes for opening speakers
+            elif "deputy" in role_lower:
+                return 420  # 7 minutes for deputy roles
+            elif "member" in role_lower or "whip" in role_lower:
+                return 240  # 4 minutes for members and whips
+            else:
+                return 300  # Default to 5 minutes
+        
+        else:
+            return 300  # Default to 5 minutes for unknown formats
+    
     def _calculate_match_duration(self, format_type: str) -> int:
         """
         Calculate total match duration in seconds based on debate format.
         
         AP (Asian Parliamentary): 6 speakers × 5 minutes = 1800 seconds
-        BP (British Parliamentary): 8 speakers × 5 minutes = 2400 seconds
+        BP (British Parliamentary): 8 speakers (varied times) ≈ 3600 seconds
         
         Returns:
             int: Total match duration in seconds
@@ -87,7 +124,8 @@ class MatchStateManager:
         if format_type.lower() in ["asian parliamentary", "ap"]:
             return 6 * 300  # 6 speakers × 5 mins = 1800 seconds
         elif format_type.lower() in ["british parliamentary", "bp"]:
-            return 8 * 300  # 8 speakers × 5 mins = 2400 seconds
+            # BP: 2× PM/LO (7 min each) + 2× Deputy (7 min each) + 2× Member (4 min each) + 2× Whip (4 min each)
+            return (2 * 420) + (2 * 420) + (2 * 240) + (2 * 240)  # 1680 + 1680 + 480 + 480 = 3840 seconds
         else:
             return 10 * 300  # Default 50 mins for unknown format
     
@@ -99,6 +137,10 @@ class MatchStateManager:
         # Set match start time (absolute timestamp, never changes)
         now = int(datetime.now(timezone.utc).timestamp())
         
+        # Get the turn duration for the first speaker
+        first_speaker_role = full_schedule[0].role if full_schedule else "Prime Minister"
+        first_turn_duration = self._get_turn_duration(format_type, first_speaker_role)
+        
         state = LiveMatchState(
             match_id=match_id,
             format_type=format_type,
@@ -108,7 +150,7 @@ class MatchStateManager:
             # === NEW TIMER MODEL ===
             match_started_at=now,                                      # When match began
             match_duration_seconds=self._calculate_match_duration(format_type),  # Total duration
-            current_turn_duration_seconds=300,                         # Current speaker's turn (5 mins)
+            current_turn_duration_seconds=first_turn_duration,         # Current speaker's turn (varies by role/format)
             total_offline_duration=0,                                  # No offline time yet
             # === CONNECTION & AI STATE ===
             is_user_connected=True,  # User starts connected
@@ -135,4 +177,17 @@ class MatchStateManager:
         state_json = state.model_dump_json()
         await self.redis.set(f"match_state:{state.match_id}", state_json, ex=7200)
     
+    async def update_turn_duration(self, match_id: str, format_type: str, speaker_role: str):
+        """
+        Update the current turn duration based on speaker role and format.
+        Call this when the turn changes to update current_turn_duration_seconds.
+        """
+        state = await self.get_state(match_id)
+        if state:
+            new_duration = self._get_turn_duration(format_type, speaker_role)
+            state.current_turn_duration_seconds = new_duration
+            await self.update_state(state)
+            return new_duration
+        return None
+
 state_manager=MatchStateManager()

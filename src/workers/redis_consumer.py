@@ -307,6 +307,21 @@ async def start_redis_consumer():
                     # Determine and trigger next speaker
                     if state.schedule and state.current_turn_index < len(state.schedule):
                         next_speaker = state.schedule[state.current_turn_index]
+                        
+                        # ===== NEW: Update turn duration based on format and role =====
+                        new_duration = await state_manager.update_turn_duration(
+                            match_id=match_id,
+                            format_type=state.format_type,
+                            speaker_role=next_speaker.role
+                        )
+                        logger.info(
+                            f"[CONSUMER] Updated turn duration to {new_duration}s "
+                            f"for {next_speaker.role} ({state.format_type})"
+                        )
+                        
+                        # Reload state with updated duration for trigger logic
+                        state = await state_manager.get_state(match_id)
+                        
                         if next_speaker.player_type == "ai":
                             logger.info(
                                 f"[CONSUMER] It is the {next_speaker.role}'s turn (AI). "
@@ -427,12 +442,21 @@ async def start_redis_consumer():
                             "event": "CATCH_UP_BUFFER",
                             "text": state.active_stream_buffer,
                             "is_complete": (state.ai_stream_status == "COMPLETED"),
-                            "speaker_role": current_speaker.role
+                            "speaker_role": current_speaker.role,
+                            "chunks_last_sent_at": state.chunks_last_sent_at,  # Tell Gateway which chunks to resend
                         }))
-                    
-                    # Resume turn appropriately
-                    if current_speaker.player_type == "ai" and state.ai_stream_status == "IDLE":
-                        # Fresh AI turn, start generating
+                        
+                        # ===== CRITICAL FIX: Only regenerate if status is IDLE =====
+                        # Don't regenerate if already STREAMING or COMPLETED!
+                        if state.ai_stream_status == "IDLE":
+                            # This shouldn't happen with a proper catch-up, but just in case
+                            logger.warning(
+                                f"[CONSUMER] Status is IDLE despite having buffer. "
+                                f"This is unusual. Not regenerating."
+                            )
+                    # ===== Only regenerate if no content exists =====
+                    elif current_speaker.player_type == "ai" and state.ai_stream_status == "IDLE":
+                        # Fresh AI turn, no content yet - start generating
                         logger.info(f"[CONSUMER] Starting AI turn for {current_speaker.role}")
                         cancel_active_task(match_id)
                         active_tasks[match_id] = asyncio.create_task(
