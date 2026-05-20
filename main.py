@@ -15,6 +15,7 @@ import logging
 
 from src.api.routes.v1 import v1_router
 from src.workers.redis_consumer import start_redis_consumer
+from src.core.redis_client import close_redis
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
     
     Shutdown:
     - Cancel Redis consumer
+    - Close Redis connection pool
     """
     logger.info("Starting Agora AI Debate Engine...")
     
@@ -43,6 +45,7 @@ async def lifespan(app: FastAPI):
     
     logger.info("Shutting down...")
     worker_task.cancel()
+    await close_redis()
     logger.info("Application shut down")
 
 
