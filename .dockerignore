@@ -1,0 +1,12 @@
+.env
+.env.*
+.git/
+.gitignore
+.vscode/
+.venv/
+__pycache__/
+*.pyc
+tests/
+scripts/
+scratch/
+*.md

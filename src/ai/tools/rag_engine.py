@@ -17,12 +17,9 @@ Features:
 """
 
 from typing import Optional, List, Dict
-from pgvector.sqlalchemy import Vector
-from sqlalchemy import func
-from sqlalchemy.orm import Session
 from src.core.database import SessionLocal
 from src.models.setup import ArgumentEmbedding
-from src.services.embedding_service import get_embedding
+from src.services.embedding_service import get_query_embedding
 import logging
 
 logger = logging.getLogger(__name__)
@@ -67,7 +64,7 @@ class RAGEngine:
         Returns:
             List of floats representing the embedding vector.
         """
-        return get_embedding(text)
+        return get_query_embedding(text)
     
     async def aretrieve_counter_arguments(
         self,

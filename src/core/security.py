@@ -20,7 +20,10 @@ from src.schemas.auth import SupabaseUserDTO
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-prod")
+SECRET_KEY = os.getenv("SUPABASE_JWT_SECRET", "")
+if not SECRET_KEY:
+    import logging
+    logging.getLogger(__name__).warning("SUPABASE_JWT_SECRET not set — JWT operations will use empty key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
