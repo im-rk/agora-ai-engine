@@ -181,6 +181,28 @@ graph TD
     ADJ -.->|trace| LF
 ```
 
+### Production Deployment & Cloud Architecture
+
+In the live production environment, the system is distributed across multiple hosting tiers to optimize for real-time performance, low latency, and secure streaming:
+
+![Deployment Architecture](assets/agora_architecture_diagram.png)
+
+#### 1. Frontend Layer (Vercel Cloud)
+- **Host:** Deployed serverlessly at `https://agora-frontend-alpha.vercel.app`.
+- **Role:** Delivers the responsive, responsive web interface, handles Client state (Zustand), captures human microphone audio via browser `MediaRecorder`, schedules TTS playback buffers sequentially using the Web Audio API, and interacts directly with Supabase Cloud for user sign-in/sign-up sessions.
+
+#### 2. Real-Time Routing & Gateways (AWS EC2 VM)
+- **Host:** AWS EC2 instance running Amazon Linux 2023 (`16.171.42.39.nip.io`).
+- **Nginx Reverse Proxy:** Serves as the SSL/TLS termination gate (ports 80/443). Cryptographically decrypts incoming secure HTTPS/WSS traffic using a **Let's Encrypt** authority certificate, proxying connection queries locally to the Go gateway on `http://localhost:8080`.
+- **Go Gateway (Port 8080):** A highly concurrent reverse proxy terminating long-lived WebSocket connections, validating Supabase JWT tokens, multiplexing binary audio slices to Deepgram, and coordinating Redis message routing.
+- **Python AI Engine (Port 8000):** FastAPI server orchestrating the 4-phase debate agent, LangChain/Groq LLaMA models, pgvector searches, and WUDC adjudication.
+- **Redis Event Broker:** Active in a Docker container acting as a Pub/Sub queue to stream token arrays instantaneously between the AI Engine and Go Gateway.
+
+#### 3. Persistence & Auth Tier (Supabase Cloud)
+- **Host:** PostgreSQL + pgvector databases deployed in AWS region `ap-southeast-2` (Sydney).
+- **Role:** Handles secure Supabase OAuth and stores tables containing debates, match configurations, speaker grades, and case-prep embeddings. Connects to backend containers via the dedicated, highly stable production pooler host (`aws-1-ap-southeast-2.pooler.supabase.com`).
+
+---
 ### Two surfaces in one process
 
 The engine runs two concurrent surfaces inside one process, both managed by FastAPI's `lifespan`:
@@ -942,9 +964,69 @@ alembic downgrade -1
 
 ## Deployment
 
-The engine is a standard ASGI application. It runs anywhere `uvicorn` runs — bare metal, a VM, or any managed Python runtime. There is no container image checked into this repository; producing one is a deployment concern, not a development concern.
+The engine is a standard ASGI application. It runs anywhere `uvicorn` runs — bare metal, a VM, or any managed Python runtime. In production, we run the AI engine containerized within a **Docker Compose** environment on an **AWS EC2** instance running Amazon Linux 2023, side-by-side with the Go Gateway, Redis, and Nginx.
 
-### Running in production
+### Production Environment & Infrastructure
+
+The live production engine runs at IP address `16.171.42.39` under Nginx, terminating secure Let's Encrypt SSL/TLS certificates for `16.171.42.39.nip.io`.
+
+#### Supabase Database Pooler Host Resolution
+
+> [!WARNING]
+> **Supabase Sydney Region Migration Block (Tenant Not Found):**
+> In early backend deployments, the Python engine container repeatedly crashed upon starting, logging `tenant or user not found` connection errors from Prisma and SQLAlchemy. 
+>
+> **The Cause:** Supabase recently updated their infrastructure in the `ap-southeast-2` (Sydney) region, migrating active database connections from old `aws-0` pooler hosts to new `aws-1` poolers. The old pooler host failed to recognize our project's tenant.
+>
+> **The Resolution:** We resolved this critical production issue by updating our environment configuration (`DATABASE_URL`) to target the new active Sydney region connection pooler host explicitly:
+> `aws-1-ap-southeast-2.pooler.supabase.com`
+
+---
+
+### Continuous Deployment (CD Pipeline)
+
+This repository features fully automated **Continuous Deployment** built with **GitHub Actions**. Whenever code is pushed or merged into the `main` branch, a workflow automatically builds and restarts the Python AI Engine service on the EC2 instance.
+
+#### GitHub Actions Workflow (`.github/workflows/deploy.yml`)
+```yaml
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches:
+      - main  # Triggers when you push to main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 16.171.42.39
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            # 1. Pull the latest code
+            cd ~/agora-ai-engine
+            git pull origin main
+            
+            # 2. Rebuild the specific engine container
+            cd ~
+            docker compose up -d --build engine
+            
+            # 3. Clean up dangling images to save disk space
+            docker image prune -f
+```
+
+*To set this up:*
+1. Navigate to **Settings ➔ Secrets and variables ➔ Actions** in the GitHub repository.
+2. Add a new repository secret named `EC2_SSH_KEY` containing the contents of your `agora-key.pem` private key.
+
+---
+
+### Running Manually in Production
 
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
