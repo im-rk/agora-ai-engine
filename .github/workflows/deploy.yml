@@ -1,0 +1,32 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy Python AI Engine
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 16.171.42.39
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== PULLING LATEST CODE ==="
+            cd ~/agora-ai-engine
+            git pull origin main
+            
+            echo "=== REBUILDING ENGINE CONTAINER ==="
+            cd ~
+            docker compose up -d --build engine
+            
+            echo "=== CLEANING UP OLD IMAGES ==="
+            docker image prune -f
+            
+            echo "=== DEPLOYMENT COMPLETE ==="
